@@ -4,9 +4,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <title>もちにゃふぇの迷宮大冒険</title>
     <!-- Tone.js -->
     <script src="Tone.js"></script>
+    <script src="hq-sprites.js"></script>
     <style>
         :root {
             --bg-color: #111;
@@ -21,6 +25,9 @@
             box-sizing: border-box;
             user-select: none;
             -webkit-user-select: none;
+            -webkit-touch-callout: none; /* iOSで長押しメニューを禁止 */
+            -webkit-tap-highlight-color: transparent; /* タップ時のハイライトを消す */
+            touch-action: manipulation; /* ダブルタップズームを防止 */
         }
 
         body,
@@ -52,16 +59,22 @@
         #status-bar {
             background-color: var(--ui-bg);
             border-bottom: 2px solid var(--border-color);
-            padding: 5px 10px;
+            padding: 4px 6px;
             display: flex;
             justify-content: space-between;
-            font-size: 14px;
+            font-size: 12px;
             z-index: 10;
+            flex-shrink: 0;
         }
 
         #status-bar div {
             flex: 1;
             text-align: center;
+        }
+
+        /* スマホ画面で文字を少し大きく */
+        @media (min-width: 375px) {
+            #status-bar { font-size: 13px; }
         }
 
         /* ゲームキャンバス領域 */
@@ -81,17 +94,31 @@
             display: block;
         }
 
+        /* ミニマップ */
+        #minimap-canvas {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 80px;
+            height: 80px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
         /* ログウィンドウ（画面上部にかぶせる） */
         #log-window {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
-            height: 100px;
+            height: 90px;
             background: linear-gradient(to bottom, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0) 100%);
             color: #fff;
-            padding: 10px;
-            font-size: 13px;
+            padding: 8px 10px;
+            font-size: 12px;
             overflow-y: hidden;
             pointer-events: none;
             display: flex;
@@ -101,29 +128,52 @@
         }
 
         .log-message {
-            margin: 2px 0;
+            margin: 1px 0;
         }
 
         /* コントロールパネル */
         #control-panel {
-            min-height: 120px;
             background-color: var(--ui-bg);
             border-top: 2px solid var(--border-color);
             display: flex;
-            flex-direction: row;
+            flex-direction: column;
             padding: 5px;
-            gap: 5px;
+            gap: 4px;
             z-index: 10;
+            flex-shrink: 0;
         }
 
-        /* 方向キー（画面上のタッチ用にも使えるがスワイプメイン） */
+        /* スワイプヒント表示 */
+        #swipe-hint {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 2px 0;
+        }
+
+        #swipe-hint span {
+            font-size: 10px;
+            color: #888;
+            letter-spacing: 1px;
+        }
+
+        /* 方向キー（折りたたみ式） */
         #dir-pad {
-            flex: 1;
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             grid-template-rows: repeat(3, 1fr);
-            gap: 2px;
-            max-width: 150px;
+            gap: 3px;
+            height: 110px; /* 展開時の高さ */
+            overflow: hidden;
+            transition: height 0.25s ease, opacity 0.25s ease;
+            touch-action: none; /* スマホでの誤ズーム・スクロール防止 */
+        }
+
+        #dir-pad.collapsed {
+            height: 0;
+            opacity: 0;
+            pointer-events: none;
         }
 
         .btn-pad {
@@ -136,6 +186,7 @@
             justify-content: center;
             font-size: 18px;
             cursor: pointer;
+            min-height: 32px;
         }
 
         .btn-pad:active {
@@ -154,11 +205,12 @@
 
         /* アクションボタン群 */
         #action-pad {
-            flex: 2;
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            grid-template-rows: repeat(2, 1fr);
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: 1fr;
             gap: 5px;
+            height: 52px;
+            touch-action: none; /* スマホでの誤ズーム・スクロール防止 */
         }
 
         .btn-action {
@@ -684,29 +736,35 @@
         <!-- キャバスエリア -->
         <div id="canvas-container">
             <canvas id="game-canvas"></canvas>
+            <canvas id="minimap-canvas"></canvas>
             <!-- ログウィンドウ -->
             <div id="log-window"></div>
         </div>
 
         <!-- コントロールパネル -->
         <div id="control-panel">
-            <!-- 疑似十字キー (スワイプ補助) -->
-            <div id="dir-pad">
+            <!-- スワイプヒント＋方向パッド切り替えボタン -->
+            <div id="swipe-hint">
+                <span>← スワイプで移動 →</span>
+                <div class="btn-pad" id="btn-dir-change" style="padding:2px 10px;font-size:11px;height:22px;min-height:unset;">方向パッド</div>
+            </div>
+            <!-- 折りたたみ式方向キー -->
+            <div id="dir-pad" class="collapsed">
                 <div class="btn-pad" data-dir="7">↖</div>
                 <div class="btn-pad" data-dir="8">↑</div>
                 <div class="btn-pad" data-dir="9">↗</div>
                 <div class="btn-pad" data-dir="4">←</div>
-                <div class="btn-pad" id="btn-dir-change">向</div>
+                <div class="btn-pad" id="btn-dir-pad-center">向</div>
                 <div class="btn-pad" data-dir="6">→</div>
                 <div class="btn-pad" data-dir="1">↙</div>
                 <div class="btn-pad" data-dir="2">↓</div>
                 <div class="btn-pad" data-dir="3">↘</div>
             </div>
-            <!-- アクションボタン -->
+            <!-- アクションボタン (横一列) -->
             <div id="action-pad">
                 <div class="btn-action attack" id="btn-attack">攻撃</div>
+                <div class="btn-action" id="btn-stay">セーブ</div>
                 <div class="btn-action" id="btn-menu">メニュー</div>
-                <div class="btn-action" id="btn-stay">セーブ/ロード</div>
                 <div class="btn-action" id="btn-action">覚醒</div>
             </div>
         </div>
@@ -773,7 +831,7 @@
     <!-- ゲームロジック -->
     <script>
         // 定数
-        const TILE_SIZE = 32;
+        const TILE_SIZE = 48;
         const MAP_WIDTH = 40;
         const MAP_HEIGHT = 40;
         const TILE = {
@@ -784,7 +842,8 @@
             STAIRS: 4,
             STORAGE: 5,
             BASE_EXIT: 6,
-            OUT_BOUNDARY: 7 // どんな能力でも通れない最外周の壁
+            OUT_BOUNDARY: 7, // どんな能力でも通れない最外周の壁
+            NPC_FRAMBOISE: 8
         };
 
         // 効果音（SE）管理
@@ -1007,12 +1066,14 @@
                 this.width = w;
                 this.height = h;
                 this.data = new Array(h).fill(0).map(() => new Array(w).fill(TILE.WALL));
+                this.visited = new Array(h).fill(0).map(() => new Array(w).fill(false));
                 this.rooms = [];
             }
 
             // BSP（二分空間分割）ベースのマップ生成
             generate() {
                 this.data = new Array(this.height).fill(0).map(() => new Array(this.width).fill(TILE.WALL));
+                this.visited = new Array(this.height).fill(0).map(() => new Array(this.width).fill(false));
                 this.rooms = [];
 
                 const MIN_SIZE = 6; // 最小分割サイズ
@@ -1158,6 +1219,8 @@
                 this.data[cy - 2][cx - 2] = TILE.STORAGE;
                 // ダンジョン出口（階段の代わり）を配置
                 this.data[cy][cx + 4] = TILE.BASE_EXIT;
+                // ふらんぼわーずさん（NPC）を配置
+                this.data[cy - 2][cx + 2] = TILE.NPC_FRAMBOISE;
 
                 this.rooms.push({ x: cx - size, y: cy - size, w: size * 2 + 1, h: size * 2 + 1, cx: cx, cy: cy });
             }
@@ -1179,6 +1242,77 @@
                 }
                 this.rooms.push({ x: rx, y: ry, w: rw, h: rh, cx: Math.floor(rx + rw / 2), cy: Math.floor(ry + rh / 2) });
             }
+
+            findPath(startX, startY, targetX, targetY, enemies = [], player = null) {
+                // A* アルゴリズム
+                const openSet = [{ x: startX, y: startY, g: 0, h: this.getDist(startX, startY, targetX, targetY), f: 0, parent: null }];
+                const closedSet = new Set();
+                const mapKey = (x, y) => `${x},${y}`;
+
+                openSet[0].f = openSet[0].h;
+
+                const MAX_ITERATIONS = 500;
+                let iterations = 0;
+
+                while (openSet.length > 0 && iterations < MAX_ITERATIONS) {
+                    iterations++;
+                    openSet.sort((a, b) => a.f - b.f);
+                    const current = openSet.shift();
+
+                    if (current.x === targetX && current.y === targetY) {
+                        const path = [];
+                        let temp = current;
+                        while (temp.parent) {
+                            path.push({ x: temp.x, y: temp.y });
+                            temp = temp.parent;
+                        }
+                        return path.reverse();
+                    }
+
+                    closedSet.add(mapKey(current.x, current.y));
+
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            if (dx === 0 && dy === 0) continue;
+                            const nx = current.x + dx;
+                            const ny = current.y + dy;
+                            const key = mapKey(nx, ny);
+
+                            if (closedSet.has(key)) continue;
+                            if (nx < 0 || nx >= this.width || ny < 0 || ny >= this.height) continue;
+
+                            if (this.isWalkable(nx, ny)) {
+                                // 目的地以外の敵・プレイヤーを障害物とみなす
+                                const isOccupied = (enemies && enemies.some(e => e.x === nx && e.y === ny && e.hp > 0 && (nx !== targetX || ny !== targetY))) ||
+                                                 (player && player.x === nx && player.y === ny && (nx !== targetX || ny !== targetY));
+
+                                if (!isOccupied) {
+                                    const g = current.g + 1;
+                                    const h = this.getDist(nx, ny, targetX, targetY);
+                                    const f = g + h;
+
+                                    const existing = openSet.find(node => node.x === nx && node.y === ny);
+                                    if (existing) {
+                                        if (g < existing.g) {
+                                            existing.g = g;
+                                            existing.f = f;
+                                            existing.parent = current;
+                                        }
+                                    } else {
+                                        openSet.push({ x: nx, y: ny, g, h, f, parent: current });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                return null;
+            }
+
+            getDist(x1, y1, x2, y2) {
+                // Chebyshev距離
+                return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
+            }
         }
 
         // エンティティ基底クラス
@@ -1186,6 +1320,13 @@
             constructor(x, y) {
                 this.x = x;
                 this.y = y;
+                attachAnim(this);
+                bindAnimHelpers(this);
+            }
+            markAttack(tx, ty) {
+                this._didAttack = true;
+                this._attackDx = Math.sign(tx - this.x) || 0;
+                this._attackDy = Math.sign(ty - this.y) || 0;
             }
         }
 
@@ -1204,12 +1345,15 @@
                 this.isAttacking = false; // 攻撃アニメーション中にトゥルー
                 this.fullnessDuration = 0; // 満腹度が減らない残りターン数
                 this.isDirectionMode = false;
+                this.walkFrame = 0; // 0 or 1
                 // 覚醒ゲージ関連
                 this.awakenGauge = 0;   // 現在のゲージ量
                 this.awakenMax = 100;   // 満タンになる値
                 this.awakenTurns = 0;   // 覚醒中の残りターン数
                 this.isStunned = 0;     // 咆哮による行動不能ターン数
                 this.equipAcc = null;   // アクセサリースロット
+                this.deathCountdown = 0; // ぱっちさんの能力による死の宣告
+                this.maxInv = 30; // 所持品上限（初期値）
             }
 
             hasAbility(abilityName) {
@@ -1248,6 +1392,7 @@
             phase_wall: '壁をすり抜けて移動できる',
             ultimate: '究極の心(全ステ2倍/常時空腹)',
             creator: '創造主の加護(全ステ2倍/満腹度低下無効)',
+            resurrection_heart: '致命ダメージを受けた時に一度だけHP１残る',
         };
 
         // 敵キャラクターの定義テーブル
@@ -1317,6 +1462,7 @@
                 this.isTremoring = false; // 踏みつけエフェクト用
                 this.isPrickly = false;  // ハリネズミのトゲ攻撃用
                 this.isDarkAura = false; // ダークもちにゃふぇ用
+                this.oneStepBehindTurns = 0; // ぱっちさんの能力用
                 this.canPhaseWall = def.canPhaseWall || false; // 壁貫通能力
                 this.size = def.size || 1; // ユニットサイズ
 
@@ -1353,6 +1499,7 @@
                         return;
                     }
                     if (dist <= 3 && Math.random() < 0.2) {
+                        this.markAttack(player.x, player.y);
                         UI.log("ダークもちにゃふぇの周囲から闇の炎が噴き上がる！");
                         this.isFiring = true;
                         this.fireDir = { x: 0, y: 0 };
@@ -1377,6 +1524,7 @@
                     if (this.activeEffect && Math.random() < 0.5) this.activeEffect = null;
                     const roll = Math.random();
                     if (this.phase === 2 && roll < 0.3) {
+                        this.markAttack(player.x, player.y);
                         UI.log("「終焉の光……世界は無へと還る……！」");
                         this.activeEffect = 'apocalypt';
                         setTimeout(() => { if (this.activeEffect === 'apocalypt') this.activeEffect = null; }, 800);
@@ -1391,6 +1539,7 @@
                     if (dist <= 10 && roll < 0.6) {
                         const isGenesisHit = (Math.abs(dx) <= 1 || Math.abs(dy) <= 1 || Math.abs(Math.abs(dx) - Math.abs(dy)) <= 1);
                         if (isGenesisHit) {
+                            this.markAttack(player.x, player.y);
                             UI.log("創造主が「創世の光」を放った！");
                             this.activeEffect = 'genesis';
                             this.fireDir = { x: dx === 0 ? 0 : (dx > 0 ? 1 : -1), y: dy === 0 ? 0 : (dy > 0 ? 1 : -1) };
@@ -1403,6 +1552,7 @@
                     }
                     if (roll < 0.8) {
                         if (this.phase === 2 || Math.random() < 0.5) {
+                            this.markAttack(player.x, player.y);
                             UI.log("「汝に神の宣告を授けよう……」");
                             this.activeEffect = 'holy_pulse';
                             this.effectX = player.x;
@@ -1443,6 +1593,7 @@
                             }
                         }
                         if (canSee) {
+                            this.markAttack(player.x, player.y);
                             UI.log(`${this.type}は遠くから炎を吐いた！`);
                             this.isFiring = true;
                             this.fireDir = { x: stepX, y: stepY };
@@ -1512,6 +1663,7 @@
 
                         // 1. プレッシャー・ロアー（威圧の咆哮） - 距離5以内で15%
                         if (dist <= 5 && Math.random() < 0.15) {
+                            this.markAttack(player.x, player.y);
                             UI.log("アダマンタイトの凄まじい咆哮！");
                             UI.log("もちにゃふぇは威圧されて動けない！");
                             player.isStunned = 1;
@@ -1529,6 +1681,7 @@
 
                         // 3. グランド・トレマー（大地の踏みつけ） - 射程内に15%
                         if (inRangeToPlayer && Math.random() < 0.15) {
+                            this.markAttack(player.x, player.y);
                             UI.log("アダマンタイトの地響き！ 周囲に衝撃が走る！");
                             this.isTremoring = true;
                             setTimeout(() => { this.isTremoring = false; }, 500);
@@ -1550,6 +1703,13 @@
                                             player.y = nbY;
                                             UI.log("衝撃で弾き飛ばされた！");
                                         }
+                                    } else if (gameManager.companion && gameManager.companion.isJoined &&
+                                        tx === gameManager.companion.x && ty === gameManager.companion.y) {
+                                        // 仲間へのダメージ
+                                        let cDef = gameManager.companion.def;
+                                        let tremorDmg = Math.max(5, 30 - Math.floor(cDef / 2));
+                                        gameManager.companion.hp -= tremorDmg;
+                                        UI.log(`おむすびさんに ${tremorDmg} のダメージ！`);
                                     }
                                 }
                             }
@@ -1560,14 +1720,14 @@
                     if (this.type === '巨大ハリネズミ') {
                         this.isPrickly = false;
                         if (this.hp < this.maxHp * 0.5 && Math.random() < 0.15) {
+                            this.markAttack(player.x, player.y);
                             UI.log(`巨大ハリネズミが全身のトゲを逆立てた！`);
                             this.isPrickly = true;
                             setTimeout(() => { this.isPrickly = false; }, 1000);
                             if (adjToPlayer) {
                                 let pDef = player.getTotalDef();
                                 let thornDmg = Math.max(5, 25 - Math.floor(pDef / 3));
-                                player.hp -= thornDmg;
-                                UI.log(`トゲが刺さり、もちにゃふぇに ${thornDmg} のダメージ！`);
+                                gameManager.applyDamageToPlayer(thornDmg, `巨大ハリネズミのトゲ反撃！ もちにゃふぇに ${thornDmg} のダメージ！`);
                             }
                             // 周囲にもダメージ（アダマンタイトのトレマーに近いがノックバックなし）
                             for (let ty = this.y - 1; ty <= this.y + size; ty++) {
@@ -1575,8 +1735,13 @@
                                     if (tx === player.x && ty === player.y && !adjToPlayer) {
                                         let pDef = player.getTotalDef();
                                         let thornDmg = Math.max(2, 12 - Math.floor(pDef / 4));
-                                        player.hp -= thornDmg;
-                                        UI.log(`飛んできたトゲで ${thornDmg} のダメージ！`);
+                                        gameManager.applyDamageToPlayer(thornDmg, `飛んできたトゲで ${thornDmg} のダメージ！`);
+                                    } else if (gameManager.companion && gameManager.companion.isJoined &&
+                                        tx === gameManager.companion.x && ty === gameManager.companion.y) {
+                                        let cDef = gameManager.companion.def;
+                                        let thornDmg = Math.max(2, 8 - Math.floor(cDef / 4));
+                                        gameManager.companion.hp -= thornDmg;
+                                        UI.log(`飛んできたトゲがおむすびさんに ${thornDmg} のダメージ！`);
                                     }
                                 }
                             }
@@ -1586,11 +1751,11 @@
 
                     const canAttack = (this.type === 'アダマンタイト') ? inRangeToPlayer : adjToPlayer;
                     if (canAttack) {
+                        this.markAttack(player.x, player.y);
                         let pDef = player.def + (player.equipDef ? player.equipDef.value : 0);
                         let damage = Math.max(1, this.str - Math.floor(pDef / 2));
                         if (player.hasAbility('damage_reduce')) damage = Math.floor(damage * 0.7);
-                        player.hp -= damage;
-                        UI.log(`${this.type}の攻撃！ もちにゃふぇに ${damage} のダメージ！`);
+                        gameManager.applyDamageToPlayer(damage, `${this.type}の攻撃！ もちにゃふぇに ${damage} のダメージ！`);
                         if (player.hasAbility('reflect')) {
                             let refDmg = Math.floor(damage * 0.3);
                             if (refDmg > 0) { this.hp -= refDmg; UI.log(`${this.type}に ${refDmg} の反射ダメージ！`); }
@@ -1633,11 +1798,11 @@
                 // 4. 壁貫通AI（亡霊騎士など）
                 if (this.canPhaseWall) {
                     if (dist === 1) {
+                        this.markAttack(player.x, player.y);
                         let pDef = player.def + (player.equipDef ? player.equipDef.value : 0);
                         let damage = Math.max(1, this.str - Math.floor(pDef / 2));
                         if (player.hasAbility('damage_reduce')) damage = Math.floor(damage * 0.7);
-                        player.hp -= damage;
-                        UI.log(`${this.type}が陰から襲った！ もちにゃふぇに ${damage} のダメージ！`);
+                        gameManager.applyDamageToPlayer(damage, `${this.type}が陰から襲った！ もちにゃふぇに ${damage} のダメージ！`);
                     } else if (dist <= 8) {
                         const mx = dx === 0 ? 0 : (dx > 0 ? 1 : -1);
                         const my = dy === 0 ? 0 : (dy > 0 ? 1 : -1);
@@ -1654,12 +1819,12 @@
 
                 // 5. 通常敵AI
                 if (dist === 1) {
+                    this.markAttack(player.x, player.y);
                     let pDef = player.def + (player.equipDef ? player.equipDef.value : 0);
                     if (player.awakenTurns > 0) pDef *= 2;
                     let damage = Math.max(1, this.str - Math.floor(pDef / 2));
                     if (player.hasAbility('damage_reduce')) damage = Math.floor(damage * 0.7);
-                    player.hp -= damage;
-                    UI.log(`${this.type}の攻撃！ もちにゃふぇに ${damage} のダメージ！`);
+                    gameManager.applyDamageToPlayer(damage, `${this.type}の攻撃！ もちにゃふぇに ${damage} のダメージ！`);
                     if (player.awakenTurns === 0) {
                         player.awakenGauge = Math.min(player.awakenMax, player.awakenGauge + 10);
                         if (gameManager) gameManager.updateAwakenButton();
@@ -1669,13 +1834,38 @@
                         if (refDmg > 0) { this.hp -= refDmg; UI.log(`${this.type}に ${refDmg} の反射ダメージ！`); }
                     }
                 } else if (dist <= 5) {
+                    // 通常の移動・追走ロジック
                     const mx = dx === 0 ? 0 : (dx > 0 ? 1 : -1);
                     const my = dy === 0 ? 0 : (dy > 0 ? 1 : -1);
                     const nx = this.x + mx;
                     const ny = this.y + my;
                     if (map.isWalkable(nx, ny) && (nx !== player.x || ny !== player.y)) {
-                        const occupied = enemies.some(e => e !== this && e.x === nx && e.y === ny && e.hp > 0);
-                        if (!occupied) { this.x = nx; this.y = ny; }
+                        // 仲間がいる場合は重ならないようにする
+                        const isCompanionHere = gameManager.companion && gameManager.companion.x === nx && gameManager.companion.y === ny;
+                        if (!isCompanionHere) {
+                            const occupied = enemies.some(e => e !== this && e.x === nx && e.y === ny && e.hp > 0);
+                            if (!occupied) { this.x = nx; this.y = ny; }
+                        }
+                    }
+                }
+
+                if (gameManager.companions.length > 0) {
+                    for (const comp of gameManager.companions) {
+                        // 仲間（Joined）状態のコンパニオンのみを攻撃対象にする
+                        if (comp.hp > 0 && comp.isJoined) {
+                            const cdx = comp.x - this.x;
+                            const cdy = comp.y - this.y;
+                            const cdist = Math.max(Math.abs(cdx), Math.abs(cdy));
+
+                            if (cdist === 1) {
+                                this.markAttack(comp.x, comp.y);
+                                let cDef = comp.def;
+                                let damage = Math.max(1, this.str - Math.floor(cDef / 2));
+                                comp.hp -= damage;
+                                UI.log(`${this.type}の攻撃！ ${comp.type}に ${damage} のダメージ！`);
+                                return;
+                            }
+                        }
                     }
                 }
             }
@@ -1702,8 +1892,210 @@
                     return this.name;
                 }
             }
+        }
 
+        // 仲間（コンパニオン）クラス
+        class Companion extends Entity {
+            constructor(x, y, player) {
+                super(x, y);
+                this.type = 'おむすびさん';
+                this.hp = player.hp;
+                this.maxHp = player.maxHp;
+                this.str = player.str;
+                this.def = player.def;
+                this.isJoined = false;
+                this.direction = 'down';
+                this.walkFrame = 0;
+            }
 
+            act(player, map, enemies, gameManager) {
+                if (this.hp <= 0) return;
+
+                const dx = player.x - this.x;
+                const dy = player.y - this.y;
+                const distToPlayer = Math.max(Math.abs(dx), Math.abs(dy));
+
+                if (!this.isJoined) {
+                    // まだ仲間になっていない場合：プレイヤーに近づく
+                    if (distToPlayer === 1) {
+                        // 隣接したら会話イベント
+                        UI.showConversation([
+                            { name: 'おむすびさん', text: '安心しろ、全てうまくいく！！', icon: 'omusubisan.png' }
+                        ]);
+                        this.isJoined = true;
+                        UI.log('おむすびさんが仲間に加わった！');
+                        // ステータスを同期
+                        this.hp = player.hp;
+                        this.maxHp = player.maxHp;
+                        this.str = player.str;
+                        this.def = player.def;
+                    } else if (distToPlayer <= 10) {
+                        this.moveToward(player.x, player.y, map, enemies, player);
+                    }
+                } else {
+                    // 仲間になった後：敵を優先して攻撃、いなければプレイヤーに追従
+                    let target = null;
+                    let minDist = 11;
+
+                    enemies.forEach(e => {
+                        if (e.hp > 0) {
+                            const d = Math.max(Math.abs(e.x - this.x), Math.abs(e.y - this.y));
+                            if (d < minDist) {
+                                minDist = d;
+                                target = e;
+                            }
+                        }
+                    });
+
+                    if (target) {
+                        if (minDist === 1) {
+                            // 隣接する敵を攻撃
+                            this.attack(target, gameManager);
+                        } else {
+                            // 敵に近づく
+                            this.moveToward(target.x, target.y, map, enemies, player);
+                        }
+                    } else if (distToPlayer > 1) {
+                        // 敵がいない場合はプレイヤーに追従
+                        this.moveToward(player.x, player.y, map, enemies, player);
+                    }
+                }
+            }
+
+            moveToward(tx, ty, map, enemies, player) {
+                // A*による経路探索
+                const path = map.findPath(this.x, this.y, tx, ty, enemies, player);
+
+                if (path && path.length > 0) {
+                    const nextStep = path[0];
+                    const mx = nextStep.x - this.x;
+                    const my = nextStep.y - this.y;
+
+                    // 向きの更新
+                    if (mx > 0 && my > 0) this.direction = 'down-right';
+                    else if (mx > 0 && my < 0) this.direction = 'up-right';
+                    else if (mx < 0 && my > 0) this.direction = 'down-left';
+                    else if (mx < 0 && my < 0) this.direction = 'up-left';
+                    else if (mx > 0) this.direction = 'right';
+                    else if (mx < 0) this.direction = 'left';
+                    else if (my > 0) this.direction = 'down';
+                    else if (my < 0) this.direction = 'up';
+
+                    this.x = nextStep.x;
+                    this.y = nextStep.y;
+                    this.walkFrame++;
+                } else {
+                    // 経路が見つからない場合のフォールバック（従来の距離優先移動）
+                    const candidates = [];
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            if (dx === 0 && dy === 0) continue;
+                            const nx = this.x + dx;
+                            const ny = this.y + dy;
+                            if (map.isWalkable(nx, ny) && (nx !== player.x || ny !== player.y)) {
+                                const occupied = enemies.some(e => e.x === nx && e.y === ny && e.hp > 0);
+                                if (!occupied) {
+                                    const dist = Math.max(Math.abs(tx - nx), Math.abs(ty - ny));
+                                    candidates.push({ x: nx, y: ny, dx, dy, dist });
+                                }
+                            }
+                        }
+                    }
+                    if (candidates.length > 0) {
+                        candidates.sort((a, b) => a.dist - b.dist);
+                        const best = candidates[0];
+                        const mx = best.dx;
+                        const my = best.dy;
+                        if (mx > 0 && my > 0) this.direction = 'down-right';
+                        else if (mx > 0 && my < 0) this.direction = 'up-right';
+                        else if (mx < 0 && my > 0) this.direction = 'down-left';
+                        else if (mx < 0 && my < 0) this.direction = 'up-left';
+                        else if (mx > 0) this.direction = 'right';
+                        else if (mx < 0) this.direction = 'left';
+                        else if (my > 0) this.direction = 'down';
+                        else if (my < 0) this.direction = 'up';
+                        this.x = best.x;
+                        this.y = best.y;
+                        this.walkFrame++;
+                    }
+                }
+            }
+
+            attack(target, gameManager) {
+                this.markAttack(target.x, target.y);
+                startAttackToward(this, target.x - this.x, target.y - this.y, performance.now());
+                SoundManager.playAttack();
+                let damage = Math.max(1, this.str - Math.floor(target.def / 2));
+                target.hp -= damage;
+                UI.log(`${this.type}の攻撃！ ${target.type}に ${damage} のダメージ！`);
+                gameManager.checkEnemyDeath(target, this);
+            }
+
+            die(gameManager) {
+                UI.log(`${this.type}は倒れてしまった……`);
+                if (this.type === 'おむすびさん') {
+                    UI.log('おむすびを落とした。');
+                    gameManager.items.push(new Item(this.x, this.y, 'food_omusubi', 'おむすび', 100));
+                } else if (this.type === 'ぱっちさん') {
+                    UI.log('「親知らずの心」を落とした。');
+                    const item = new Item(this.x, this.y, 'disk_acc', '親知らずの心', 0);
+                    item.abilities = ['resurrection_heart'];
+                    gameManager.items.push(item);
+                }
+                gameManager.companions = gameManager.companions.filter(c => c !== this);
+            }
+        }
+
+        class Patti extends Companion {
+            constructor(x, y, player) {
+                super(x, y, player);
+                this.type = 'ぱっちさん';
+                // ぱっちさんのステータスは出現時のプレイヤーと同等
+                this.hp = player.hp;
+                this.maxHp = player.maxHp;
+                this.str = player.str;
+                this.def = player.def;
+            }
+
+            act(player, map, enemies, gameManager) {
+                if (gameManager.pattiDeathCountdown === -1) return;
+                
+                // 隣接時に仲間になるイベント (Companionから継承したmoveTowardの前に判定)
+                if (!this.isJoined) {
+                    const dist = Math.abs(this.x - player.x) + Math.abs(this.y - player.y);
+                    if (dist <= 1) {
+                        const script = [
+                            { name: 'ぱっちさん', text: 'すぐには気づけないが、気づいた頃には手遅れ、それが俺の能力だ！', icon: 'patisan.png' },
+                            { name: 'もちにゃふぇ', text: 'ふぇ〜、頼もしいね！よろしくにゃ！', icon: 'Assets/moti.png' }
+                        ];
+                        UI.showConversation(script, () => {
+                            this.isJoined = true;
+                            UI.log("ぱっちさんが仲間に加わった！");
+                        });
+                        return;
+                    }
+                }
+                
+                super.act(player, map, enemies, gameManager);
+            }
+
+            attack(target, gameManager) {
+                // ワンステップ・ビハインドの発動判定 (15%の確率)
+                if (Math.random() < 0.15 && target.oneStepBehindTurns === 0) {
+                    UI.log(`${this.type}の特殊攻撃！「ワンステップ・ビハインド」！`);
+                    const isBoss = ['巨大ハリネズミ', 'アダマンタイト', 'ダークもちにゃふぇ', '創造主'].includes(target.type);
+                    if (isBoss) {
+                        UI.log(`しかし、${target.type}には通用しなかった！`);
+                        UI.log(`${this.type}に死の宣告が跳ね返った！`);
+                        gameManager.pattiDeathCountdown = 2; // 2ターン後に消滅
+                    } else {
+                        UI.log(`${target.type}は2ターン後に倒れる運命となった...`);
+                        target.oneStepBehindTurns = 2;
+                    }
+                    return; 
+                }
+                super.attack(target, gameManager);
+            }
         }
 
         // ピクセルアートエンジン
@@ -1740,6 +2132,8 @@
             'H': '#ffff00', // 虹色の翼（イエロー）
             'I': '#4169e1', // 角（ロイヤルブルー）
             'J': '#1e90ff', // 瞳（ドジャーブルー）
+            'X': '#f06292', // ふらんぼわーず（髪：ピンク）
+            'Y': '#e91e63', // ふらんぼわーず（服：濃いピンク）
             // 新モンスターカラー
             'a': '#7cb342', // スライム緑
             'b': '#558b2f', // スライム濃緑
@@ -1759,7 +2153,8 @@
             'y': '#FFD700', // God Gold
             'w': '#FFFFFF',  // God White
             'X': 'rgba(0,0,0,0.5)', // 半透明黒（壁枠用）
-            'Y': 'rgba(255,255,255,0.2)' // 半透明白（枠ハイライト）
+            'Y': 'rgba(255,255,255,0.2)', // 半透明白（枠ハイライト）
+            'G': '#4caf50'  // 仲間のミニマップ表示用（緑）
         };
 
         const SPRITES = {
@@ -2439,6 +2834,7 @@
                 "................",
                 "................"
             ],
+
             item_scroll: [
                 "................",
                 ".....AAAAA......",
@@ -2451,6 +2847,20 @@
                 "...APPPPPPPPA...",
                 "....APPPPPA.....",
                 ".....AAAAA......",
+                "................"
+            ],
+            // おむすびアイテム (全回復)
+            item_omusubi: [
+                "................",
+                ".......66.......",
+                "......6666......",
+                ".....666666.....",
+                "....66666666....",
+                "...6666666666...",
+                "..666666666666..",
+                "..666600006666..",
+                "..666600006666..",
+                "...6660000666...",
                 "................"
             ],
             // 炎エフェクト（ブレス用）
@@ -2557,20 +2967,142 @@
             ]
         };
 
+        const PLAYER_SPRITE_CONFIG = {
+            'down': [
+                { sx: 0, sy: 0, sw: 147, sh: 170 },
+                { sx: 0, sy: 170, sw: 148, sh: 154 }
+            ],
+            'up': [
+                { sx: 0, sy: 324, sw: 133, sh: 166 },
+                { sx: 0, sy: 490, sw: 136, sh: 151 }
+            ],
+            'left': [
+                { sx: 0, sy: 641, sw: 117, sh: 146 },
+                { sx: 0, sy: 787, sw: 107, sh: 152 }
+            ],
+            'right': [
+                { sx: 0, sy: 939, sw: 116, sh: 146 },
+                { sx: 0, sy: 1085, sw: 106, sh: 152 }
+            ],
+            'down-right': [
+                { sx: 0, sy: 1237, sw: 131, sh: 142 },
+                { sx: 0, sy: 1379, sw: 139, sh: 154 }
+            ],
+            'down-left': [
+                { sx: 0, sy: 1533, sw: 129, sh: 141 },
+                { sx: 0, sy: 1674, sw: 141, sh: 155 }
+            ],
+            'up-right': [
+                { sx: 0, sy: 1829, sw: 133, sh: 140 },
+                { sx: 0, sy: 1969, sw: 133, sh: 139 }
+            ],
+            'up-left': [
+                { sx: 0, sy: 2108, sw: 133, sh: 139 },
+                { sx: 0, sy: 2247, sw: 133, sh: 139 }
+            ],
+            'attack': {
+                'down': { sx: 0, sy: 2386, sw: 133, sh: 137 },
+                'up': { sx: 0, sy: 2523, sw: 133, sh: 166 },
+                'left': { sx: 0, sy: 2689, sw: 133, sh: 133 },
+                'right': { sx: 0, sy: 2822, sw: 133, sh: 133 },
+                'down-right': { sx: 0, sy: 2955, sw: 133, sh: 144 },
+                'down-left': { sx: 0, sy: 3099, sw: 133, sh: 142 },
+                'up-right': { sx: 0, sy: 3241, sw: 133, sh: 139 },
+                'up-left': { sx: 0, sy: 3380, sw: 133, sh: 139 }
+            }
+        };
+
+        const OMUSUBI_SPRITE_CONFIG = {
+            'up': [
+                { sx: 0, sy: 0, sw: 101, sh: 124 }
+            ],
+            'right': [
+                { sx: 0, sy: 124, sw: 105, sh: 124 }
+            ],
+            'down': [
+                { sx: 0, sy: 248, sw: 110, sh: 125 }
+            ],
+            'left': [
+                { sx: 0, sy: 373, sw: 109, sh: 125 }
+            ],
+            'up-left': [
+                { sx: 0, sy: 498, sw: 125, sh: 145 }
+            ],
+            'up-right': [
+                { sx: 0, sy: 643, sw: 125, sh: 145 }
+            ],
+            'down-right': [
+                { sx: 0, sy: 788, sw: 125, sh: 145 }
+            ],
+            'down-left': [
+                { sx: 0, sy: 933, sw: 125, sh: 144 }
+            ]
+        };
+
+        const PATTI_SPRITE_CONFIG = {
+            'up': [{ sx: 0, sy: 0, sw: 133, sh: 200 }],
+            'right': [{ sx: 0, sy: 200, sw: 144, sh: 200 }],
+            'down-right': [{ sx: 0, sy: 400, sw: 135, sh: 197 }],
+            'down': [{ sx: 0, sy: 597, sw: 132, sh: 201 }],
+            'down-left': [{ sx: 0, sy: 798, sw: 135, sh: 198 }],
+            'left': [{ sx: 0, sy: 996, sw: 141, sh: 200 }],
+            'up-right': [{ sx: 0, sy: 1196, sw: 133, sh: 187 }],
+            'up-left': [{ sx: 0, sy: 1383, sw: 133, sh: 133 }]
+        };
+
         class PixelArtEngine {
             static textures = {};
+            static externalTextures = {}; // 外部（Assets/等）からの読み込み用
             static mochinyafeImg = null;
+            static omusubiImg = null;
+            static pattiImg = null;
+
+            static OMUSUBI_SPRITE_CONFIG = {
+                'up': [{ sx: 0, sy: 0, sw: 101, sh: 124 }],
+                'right': [{ sx: 0, sy: 124, sw: 105, sh: 124 }],
+                'down': [{ sx: 0, sy: 248, sw: 110, sh: 125 }],
+                'left': [{ sx: 0, sy: 373, sw: 109, sh: 125 }],
+                'up-left': [{ sx: 0, sy: 498, sw: 125, sh: 145 }],
+                'up-right': [{ sx: 0, sy: 643, sw: 125, sh: 145 }],
+                'down-right': [{ sx: 0, sy: 788, sw: 125, sh: 145 }],
+                'down-left': [{ sx: 0, sy: 933, sw: 125, sh: 144 }]
+            };
+
+            static PATI_SPRITE_CONFIG = {
+                'up': [{ sx: 0, sy: 0, sw: 133, sh: 200 }],
+                'right': [{ sx: 0, sy: 200, sw: 144, sh: 200 }],
+                'down-right': [{ sx: 0, sy: 400, sw: 135, sh: 197 }],
+                'down': [{ sx: 0, sy: 597, sw: 132, sh: 201 }],
+                'down-left': [{ sx: 0, sy: 798, sw: 135, sh: 198 }],
+                'left': [{ sx: 0, sy: 996, sw: 141, sh: 200 }],
+                'up-right': [{ sx: 0, sy: 1196, sw: 133, sh: 187 }],
+                'up-left': [{ sx: 0, sy: 1383, sw: 133, sh: 133 }]
+            };
 
             static loadTextures(targetSize) {
                 for (let key in SPRITES) {
                     this.textures[key] = this.createTexture(SPRITES[key], targetSize);
                 }
-                return new Promise((resolve) => {
-                    this.mochinyafeImg = new Image();
-                    this.mochinyafeImg.onload = () => resolve();
-                    this.mochinyafeImg.onerror = () => resolve();
-                    this.mochinyafeImg.src = 'mochinyafe_hi_res.png';
-                });
+                return Promise.all([
+                    new Promise((resolve) => {
+                        this.mochinyafeImg = new Image();
+                        this.mochinyafeImg.onload = () => resolve();
+                        this.mochinyafeImg.onerror = () => resolve();
+                        this.mochinyafeImg.src = 'motimoti.png';
+                    }),
+                    new Promise((resolve) => {
+                        this.omusubiImg = new Image();
+                        this.omusubiImg.onload = () => resolve();
+                        this.omusubiImg.onerror = () => resolve();
+                        this.omusubiImg.src = 'omusubi.png';
+                    }),
+                    new Promise((resolve) => {
+                        this.pattiImg = new Image();
+                        this.pattiImg.onload = () => resolve();
+                        this.pattiImg.onerror = () => resolve();
+                        this.pattiImg.src = 'pati.png';
+                    })
+                ]);
             }
             static createTexture(data, size) {
                 const h = data.length;
@@ -2606,6 +3138,8 @@
                     'effect_fire_img': 'Assets/fire_breath_effect.png',
                     'enemy_dark_moti_img': 'Assets/darkmoti.png',
                     'enemy_creator_img': 'Assets/godmoti.png',
+                    'npc_hura': 'hura.png',
+                    'npc_hurasan': 'hurasan.png',
                     // ダンジョン背景（プリロード用）
                     'bg_0': 'Assets/0.jpg',
                     'bg_1_10': 'Assets/1-10.jpg',
@@ -2633,6 +3167,14 @@
                 this.canvas = document.getElementById('game-canvas');
                 this.ctx = this.canvas.getContext('2d');
 
+                // ミニマップの初期化
+                this.minimapCanvas = document.getElementById('minimap-canvas');
+                if (this.minimapCanvas) {
+                    this.minimapCanvas.width = MAP_WIDTH * 2; // 1タイル2pxで80px
+                    this.minimapCanvas.height = MAP_HEIGHT * 2;
+                    this.minimapCtx = this.minimapCanvas.getContext('2d');
+                }
+
                 this.map = new DungeonMap(MAP_WIDTH, MAP_HEIGHT);
                 this.player = new Player(0, 0);
                 this.player.inv = [];
@@ -2642,6 +3184,8 @@
                 this.player.equipAbi = null;
                 this.enemies = [];
                 this.items = [];
+                this.companions = [];
+                this.pattiDeathCountdown = 0; // ぱっちさんの自滅カウントダウン
                 this.baseItems = []; // 拠点に置いたアイテムの保存用
                 this.storage = [];   // 倉庫の中身
                 this.floor = 0;      // 0は拠点
@@ -2650,10 +3194,65 @@
                 this.storageState = null; // 倉庫UI用: 'deposit' | 'withdraw'
                 this.isDirectionMode = false; // 方向転換モード
 
+                this.animBusy = false;
+                this._animThen = null;
+                this.heldMove = null;
+                this.keysDown = new Set();
+                this._heldCooldownUntil = 0;
                 this.resizeCanvas();
                 this.setupInput();
+                this.startAnimLoop();
 
                 window.addEventListener('resize', () => this.resizeCanvas());
+            }
+
+            anyAnimating(now) {
+                if (entityIsAnimating(this.player, now)) return true;
+                if (this.enemies.some(e => e.hp > 0 && entityIsAnimating(e, now))) return true;
+                if (this.companions.some(c => c.hp > 0 && entityIsAnimating(c, now))) return true;
+                return false;
+            }
+
+            playAnims(then) {
+                if (then) {
+                    const prev = this._animThen;
+                    this._animThen = () => {
+                        if (prev) prev();
+                        then();
+                    };
+                }
+                this.animBusy = true;
+                if (!this.anyAnimating(performance.now())) {
+                    const cb = this._animThen;
+                    this._animThen = null;
+                    this.animBusy = false;
+                    if (cb) cb();
+                }
+            }
+
+            startAnimLoop() {
+                const loop = (now) => {
+                    this._rafNow = now;
+                    this.draw(now);
+                    if (this.animBusy && !this.anyAnimating(now)) {
+                        this.enemies.forEach(e => { if (e.animKind !== 'idle') e.animKind = 'idle'; });
+                        this.companions.forEach(c => { if (c.animKind !== 'idle') c.animKind = 'idle'; });
+                        if (this.player.animKind !== 'idle' && !entityIsAnimating(this.player, now)) {
+                            this.player.animKind = 'idle';
+                            this.player.isAttacking = false;
+                        }
+                        this.animBusy = false;
+                        const cb = this._animThen;
+                        this._animThen = null;
+                        if (cb) cb();
+                    }
+                    if (!this.animBusy && this.heldMove && this.player.hp > 0 && !this.isConversationActive() && now >= this._heldCooldownUntil) {
+                        this.actionMove(this.heldMove.dx, this.heldMove.dy);
+                        if (!this.animBusy) this._heldCooldownUntil = now + 70;
+                    }
+                    requestAnimationFrame(loop);
+                };
+                requestAnimationFrame(loop);
             }
 
             // ゲーム状態を完全に初期化する
@@ -2668,6 +3267,7 @@
                 this.player.equipAbi = null;
                 this.enemies = [];
                 this.items = [];
+                this.companions = [];
                 this.baseItems = []; // 拠点アイテムもリセット
                 this.storage = [];   // 倉庫もリセット
                 this.camera = { x: 0, y: 0 };
@@ -2695,6 +3295,34 @@
             isConversationActive() {
                 const modal = document.getElementById('conversation-modal');
                 return modal && modal.style.display === 'flex';
+            }
+
+            // プレイヤーへのダメージ処理（致死回避アイテムの判定を含む）
+            applyDamageToPlayer(damage, reason = "") {
+                if (damage <= 0) return;
+                
+                let actualDamage = damage;
+                const willDie = (this.player.hp - actualDamage <= 0);
+
+                if (willDie && this.player.hasAbility('resurrection_heart')) {
+                    this.player.hp = 1;
+                    UI.log("致命的なダメージを受けた！ しかし「親知らずの心」が身代わりになった！");
+                    // 装備品からアイテムを探して削除
+                    if (this.player.equipAcc) {
+                        const index = this.player.inv.indexOf(this.player.equipAcc);
+                        if (index !== -1) {
+                            this.player.inv.splice(index, 1);
+                        }
+                        this.player.equipAcc = null;
+                    }
+                } else {
+                    this.player.hp = Math.max(0, this.player.hp - actualDamage);
+                    if (reason) UI.log(reason);
+                }
+
+                if (this.player.hp <= 0) {
+                    UI.log("もちにゃふぇは力尽きた……");
+                }
             }
 
             // 背景画像の更新（信頼性向上のため独立化）
@@ -2922,6 +3550,41 @@
                         else break;
                     }
 
+                    // 仲間（おむすびさん・ぱっちさん）のスポーン判定
+                    const spawnedPatti = this.companions.some(c => c.type === 'ぱっちさん');
+                    if (!spawnedPatti && this.floor % 10 !== 0 && Math.random() < 0.15) {
+                        if (this.map.rooms.length > 1) {
+                            const r = this.map.rooms[Math.floor(Math.random() * (this.map.rooms.length - 1)) + 1];
+                            let spawned = false;
+                            for (let attempt = 0; attempt < 50 && !spawned; attempt++) {
+                                // 部屋の境界（壁）を避けるため +1, -2 の範囲で抽選
+                                const ex = r.x + 1 + Math.floor(Math.random() * (r.w - 2));
+                                const ey = r.y + 1 + Math.floor(Math.random() * (r.h - 2));
+                                // 確実に床タイルであることを確認
+                                if (this.map.getTile(ex, ey) === TILE.FLOOR && (ex !== this.player.x || ey !== this.player.y)) {
+                                    this.companions.push(new Patti(ex, ey, this.player));
+                                    spawned = true;
+                                }
+                            }
+                        }
+                    }
+
+                    const spawnedOmusubi = this.companions.some(c => c.type === 'おむすびさん');
+                    if (!spawnedOmusubi && this.floor % 10 !== 0 && Math.random() < 0.20) {
+                        if (this.map.rooms.length > 1) {
+                            const r = this.map.rooms[Math.floor(Math.random() * (this.map.rooms.length - 1)) + 1];
+                            let spawned = false;
+                            for (let attempt = 0; attempt < 50 && !spawned; attempt++) {
+                                const ex = r.x + 1 + Math.floor(Math.random() * (r.w - 2));
+                                const ey = r.y + 1 + Math.floor(Math.random() * (r.h - 2));
+                                if (this.map.getTile(ex, ey) === TILE.FLOOR && (ex !== this.player.x || ey !== this.player.y)) {
+                                    this.companions.push(new Companion(ex, ey, this.player));
+                                    spawned = true;
+                                }
+                            }
+                        }
+                    }
+
                     for (let i = 1; i < this.map.rooms.length; i++) {
                         const r = this.map.rooms[i];
 
@@ -2955,7 +3618,31 @@
                     }
                     UI.log(`地下 ${this.floor}階 に降りた。`);
                 }
+
+                // 仲間化済みのコンパニオンのフロア移動後再配置
+                this.companions.forEach(comp => {
+                    if (comp.isJoined) {
+                        let placed = false;
+                        for (let dy = -1; dy <= 1 && !placed; dy++) {
+                            for (let dx = -1; dx <= 1 && !placed; dx++) {
+                                if (dx === 0 && dy === 0) continue;
+                                const nx = this.player.x + dx, ny = this.player.y + dy;
+                                if (this.map.isWalkable(nx, ny) && !this.enemies.some(e => e.x === nx && e.y === ny && e.hp > 0)) {
+                                    comp.x = nx;
+                                    comp.y = ny;
+                                    placed = true;
+                                }
+                            }
+                        }
+                        if (!placed) {
+                            comp.x = this.player.x;
+                            comp.y = this.player.y;
+                        }
+                    }
+                });
+
                 UI.updateStatus(this.player, this.floor);
+                this.updateDiscovery(this.player.x, this.player.y);
             }
 
             // ターン処理の進行
@@ -2977,26 +3664,82 @@
 
                 // 餓死判定（満腹度が0ならHP減少、ただし creator 加護中は免除）
                 if (this.player.food <= 0 && !this.player.hasAbility('creator')) {
-                    this.player.hp--;
+                    this.applyDamageToPlayer(1, "お腹が空いて力がでない……。");
                 } else if (this.player.hp < this.player.maxHp) {
                     if (Math.random() < 0.1) this.player.hp++;
                 }
 
+                // 敵の行動
                 for (let i = this.enemies.length - 1; i >= 0; i--) {
                     const enemy = this.enemies[i];
                     if (enemy.hp <= 0) {
                         this.enemies.splice(i, 1);
-                    } else {
+                        continue;
+                    }
+
+                    // ワンステップ・ビハインド（死の宣告）の進行
+                    if (enemy.oneStepBehindTurns > 0) {
+                        enemy.oneStepBehindTurns--;
+                        if (enemy.oneStepBehindTurns === 0) {
+                            UI.log(`${enemy.type}に死の宣告が発動した！`);
+                            enemy.hp = 0;
+                            this.checkEnemyDeath(enemy);
+                            if (enemy.hp <= 0) {
+                                this.enemies.splice(i, 1);
+                                continue;
+                            }
+                        }
+                    }
+
+                    const ox = enemy.x, oy = enemy.y;
+                    enemy._didAttack = false;
+                    enemy.act(this.player, this.map, this.enemies, this);
+                    // 倍速・3倍速の処理
+                    if (enemy.hp > 0 && (enemy.baseType === 'はぐれスライム' || enemy.baseType === 'メタルキング')) {
                         enemy.act(this.player, this.map, this.enemies, this);
-                        // はぐれスライム・メタルキングは2倍速（2回行動）
-                        if ((enemy.baseType === 'はぐれスライム' || enemy.baseType === 'メタルキング') && enemy.hp > 0) {
-                            enemy.act(this.player, this.map, this.enemies, this);
+                    }
+                    if (enemy.hp > 0 && enemy.type === 'ダークもちにゃふぇ') {
+                        enemy.act(this.player, this.map, this.enemies, this);
+                        if (enemy.hp > 0) enemy.act(this.player, this.map, this.enemies, this);
+                    }
+                    const now = performance.now();
+                    if (enemy.hp > 0) {
+                        if (enemy._didAttack) {
+                            startAttackToward(enemy, enemy._attackDx, enemy._attackDy, now);
+                        } else if (enemy.x !== ox || enemy.y !== oy) {
+                            startWalkFrom(enemy, ox, oy, now, ENEMY_MOVE_ANIM_MS);
                         }
-                        // ダークもちにゃふぇは3倍速（3回行動）
-                        if (enemy.type === 'ダークもちにゃふぇ' && enemy.hp > 0) {
-                            enemy.act(this.player, this.map, this.enemies, this);
-                            if (enemy.hp > 0) enemy.act(this.player, this.map, this.enemies, this);
+                    }
+                }
+
+                // ぱっちさんの自滅カウントダウン
+                if (this.pattiDeathCountdown > 0) {
+                    this.pattiDeathCountdown--;
+                    if (this.pattiDeathCountdown === 0) {
+                        const patti = this.companions.find(c => c.type === 'ぱっちさん');
+                        if (patti) {
+                            UI.log("ぱっちさんに死の宣告が発動した！");
+                            UI.log("ぱっちさんは静かに消滅した……。");
+                            patti.die(this); // dieメソッドを通じて親知らずの心をドロップさせる
                         }
+                    }
+                }
+
+                // 仲間の行動
+                for (let i = this.companions.length - 1; i >= 0; i--) {
+                    const comp = this.companions[i];
+                    if (comp.hp > 0) {
+                        const cox = comp.x, coy = comp.y;
+                        comp._didAttack = false;
+                        comp.act(this.player, this.map, this.enemies, this);
+                        const nowC = performance.now();
+                        if (comp._didAttack) {
+                            startAttackToward(comp, comp._attackDx, comp._attackDy, nowC);
+                        } else if (comp.x !== cox || comp.y !== coy) {
+                            startWalkFrom(comp, cox, coy, nowC, ENEMY_MOVE_ANIM_MS);
+                        }
+                    } else {
+                        comp.die(this); // die内でも this.companions から remove される
                     }
                 }
 
@@ -3023,7 +3766,7 @@
                 // スタン中なら強制的に敵のターンへ
                 if (this.player.isStunned > 0) {
                     this.processTurn();
-                    this.draw();
+                    this.playAnims();
                     return;
                 }
 
@@ -3041,14 +3784,16 @@
                     if (this.player.awakenTurns === 0) UI.log('覚醒が解けた……');
                 }
 
+                this.updateDiscovery(this.player.x, this.player.y);
                 this.processTurn();
                 this.updateAwakenButton();
-                this.draw();
+                this.playAnims();
             }
 
             // プレイヤー行動実行
             actionMove(dx, dy) {
-                if (this.player.hp <= 0 || this.isConversationActive()) return;
+                if (this.player.hp <= 0 || this.isConversationActive() || this.animBusy) return;
+                if (!dx && !dy) return;
 
                 // 方向転換モードの場合
                 if (this.isDirectionMode) {
@@ -3062,7 +3807,7 @@
                     else if (dy < 0) this.player.direction = 'up';
 
                     this.isDirectionMode = false; // モード解除
-                    const btn = document.getElementById('btn-dir-change');
+                    const btn = document.getElementById('btn-dir-pad-center');
                     if (btn) {
                         btn.style.background = '';
                         btn.style.color = '';
@@ -3073,6 +3818,39 @@
 
                 const nx = this.player.x + dx;
                 const ny = this.player.y + dy;
+
+                // ふらんぼわーずさん（固定NPC）との会話イベント判定
+                if (this.map.getTile(nx, ny) === TILE.NPC_FRAMBOISE) {
+                    const heartIdx = this.player.inv.findIndex(it => it.name === '親知らずの心');
+                    let script = [];
+                    if (heartIdx !== -1) {
+                        if (this.player.maxInv < 50) {
+                            script = [
+                                { name: 'ふらんぼわーずさん', text: '親知らずの心、くれるの？ありがとう、荷物を少し多く持てるようにしてあげるね', icon: 'hurasan.png' }
+                            ];
+                            this.player.inv.splice(heartIdx, 1);
+                            this.player.maxInv++;
+                            UI.log("所持品の上限が 1 増えた！");
+                        } else {
+                            script = [
+                                { name: 'ふらんぼわーずさん', text: 'もう荷物はいっぱい持てるみたい。これ以上は私もお手伝いできないかな。', icon: 'hurasan.png' }
+                            ];
+                        }
+                    } else {
+                        script = [
+                            { name: 'ふらんぼわーずさん', text: '親知らずが欲しい…', icon: 'hurasan.png' }
+                        ];
+                    }
+                    UI.showConversation(script);
+                    return;
+                }
+
+                // 仲間（おむすびさん・ぱっちさん）との会話イベント判定
+                const companion = this.companions.find(c => !c.isJoined && (Math.abs(c.x - nx) + Math.abs(c.y - ny) === 0 || (c.x === nx && c.y === ny)));
+                if (companion) {
+                    companion.act(this.player, this.map, this.enemies, this);
+                    return;
+                }
 
                 // 向きを更新
                 if (dx > 0 && dy > 0) this.player.direction = 'down-right';
@@ -3102,12 +3880,10 @@
 
                 if (targets.length > 0) {
                     SoundManager.playAttack();
-                    // 攻撃アニメーションフラグを立てる（通常の物理攻撃のみ）
+                    this.player.faceDx = dx;
+                    this.player.faceDy = dy;
+                    startAttackToward(this.player, dx, dy, performance.now());
                     this.player.isAttacking = true;
-                    setTimeout(() => {
-                        this.player.isAttacking = false;
-                        this.draw();
-                    }, 150);
 
                     // 攻撃処理の内部関数化
                     const doAttack = (enemy, isSecondary = false) => {
@@ -3138,7 +3914,7 @@
                         if (enemy.type === '巨大ハリネズミ' && enemy.hp > 0 && Math.random() < 0.30) {
                             UI.log(`巨大ハリネズミはトゲで反撃した！`);
                             const thornDmg = 10;
-                            this.player.hp -= thornDmg;
+                            this.applyDamageToPlayer(thornDmg, `もちにゃふぇに ${thornDmg} のダメージ！`);
                             UI.log(`もちにゃふぇに ${thornDmg} のダメージ！`);
                         }
 
@@ -3159,8 +3935,12 @@
                         });
                     }
 
-                    this.processTurn();
-                    this.draw();
+                    this.playAnims(() => {
+                        this.player.isAttacking = false;
+                        this.processTurn();
+                        this.updateAwakenButton();
+                        this.playAnims();
+                    });
                     return;
                 }
 
@@ -3173,8 +3953,8 @@
                         // 壁の中への移動を許可するため、ここではリターンせず通常移動処理へ流す
                     } else if (this.player.hasAbility('wall_attack')) {
                         // ダイバー・ダウン装備時：壁沿いの敵にダメージ
+                        startAttackToward(this.player, dx, dy, performance.now());
                         this.player.isAttacking = true;
-                        setTimeout(() => { this.player.isAttacking = false; this.draw(); }, 200);
 
                         // 壁タイル(nx,ny)に隣接するフロアタイル上の敵を収集
                         let wallAttackTargets = [];
@@ -3212,7 +3992,10 @@
                             UI.log(`壁沿いの魔撃！が、壁沿いに敵はいない。`);
                         }
 
-                        this.endPlayerTurn();
+                        this.playAnims(() => {
+                            this.player.isAttacking = false;
+                            this.endPlayerTurn();
+                        });
                         return;
                     } else {
                         // 壁の場合は移動しない
@@ -3221,14 +4004,29 @@
                 }
 
                 // 通常移動
+                const ox = this.player.x, oy = this.player.y;
                 this.player.x = nx;
                 this.player.y = ny;
+                this.player.walkFrame = (this.player.walkFrame + 1) % 4;
+                this.player.faceDx = dx;
+                this.player.faceDy = dy;
+                startWalkFrom(this.player, ox, oy, performance.now(), MOVE_ANIM_MS);
+
+                this.playAnims(() => {
+                // 仲間（おむすびさん・ぱっちさん）との隣接判定（移動直後）
+                const companionNearby = this.companions.find(c => !c.isJoined && Math.max(Math.abs(this.player.x - c.x), Math.abs(this.player.y - c.y)) === 1);
+                if (companionNearby) {
+                    companionNearby.act(this.player, this.map, this.enemies, this);
+                    // 会話イベントが発生した場合はここで一旦中断（ターンはCompanion.act内で処理される）
+                    this.draw();
+                    return;
+                }
 
                 // 足元のアイテムを自動取得
                 const itemIdx = this.items.findIndex(i => i.x === this.player.x && i.y === this.player.y);
                 if (itemIdx >= 0) {
                     const item = this.items[itemIdx];
-                    if (this.player.inv.length < 30) {
+                    if (this.player.inv.length < this.player.maxInv) {
                         this.player.inv.push(item);
                         this.items.splice(itemIdx, 1);
                         if (this.isAtBase) this.baseItems = [...this.items];
@@ -3245,6 +4043,7 @@
                 }
 
                 this.endPlayerTurn();
+                });
             }
 
             // 足元/概階アクション
@@ -3252,7 +4051,7 @@
                 if (this.isConversationActive()) return;
                 const idx = this.items.findIndex(i => i.x === this.player.x && i.y === this.player.y);
                 if (idx >= 0) {
-                    if (this.player.inv.length >= 30) {
+                    if (this.player.inv.length >= this.player.maxInv) {
                         UI.log("持ちものがいっぱいで拾えない！");
                         return;
                     }
@@ -3330,7 +4129,7 @@
                 btnWithdraw.onclick = () => { this.storageState = 'withdraw'; this.refreshStorageUI(); };
 
                 const btnDeposit = document.createElement('button');
-                btnDeposit.innerText = `預ける (${this.player.inv.length}/30)`;
+                btnDeposit.innerText = `預ける (${this.player.inv.length}/${this.player.maxInv})`;
                 btnDeposit.style.cssText = `flex:1; padding:8px; border:none; cursor:pointer; background:${this.storageState === 'deposit' ? '#d32f2f' : '#444'}; color:white;`;
                 btnDeposit.onclick = () => { this.storageState = 'deposit'; this.refreshStorageUI(); };
 
@@ -3370,7 +4169,7 @@
 
             executeStorageAction(index) {
                 if (this.storageState === 'withdraw') {
-                    if (this.player.inv.length >= 30) {
+                    if (this.player.inv.length >= this.player.maxInv) {
                         UI.log("手荷物がいっぱいです。");
                         return;
                     }
@@ -3403,7 +4202,6 @@
                     return 6; // その他
                 };
 
-                // 同カテゴリ内では名前の長さ（具体性）で降順、次いで名前の昇順にソート
                 this.player.inv.sort((a, b) => {
                     const pa = getSortPriority(a);
                     const pb = getSortPriority(b);
@@ -3434,6 +4232,7 @@
                 this.player.inv = [];
                 this.player.equipAtk = null;
                 this.player.equipDef = null;
+                this.player.equipAcc = null;
                 this.player.equipAbi = null;
                 this.resetPlayerStatsForBase();
 
@@ -3507,6 +4306,8 @@
                         } else if (item.type === 'food') {
                             if (item.name === 'パンケーキ') descText = '満腹度が25%回復';
                             else if (item.name === '大きなパンケーキ') descText = '満腹度を50%回復';
+                        } else if (item.type === 'food_omusubi') {
+                            descText = '満腹度全回復';
                         } else if (item.type === 'potion') {
                             if (item.name === 'ラベンダーティー') descText = 'HPを60回復';
                         } else if (item.type === 'disk_exit' || item.type === 'comic_synth') {
@@ -3528,7 +4329,7 @@
                             btnSynth.innerText = "合成";
                             btnSynth.onclick = () => this.useItem(index, 'use');
                             btnGroup.appendChild(btnSynth);
-                        } else if (item.type === 'food') {
+                        } else if (item.type === 'food' || item.type === 'food_omusubi') {
                             // 食料は「食べる」ボタン
                             const btnEat = document.createElement('button');
                             btnEat.style.padding = "5px 10px";
@@ -3662,6 +4463,10 @@
                         }
                         // 腹持ち効果（3ターン）を追加
                         this.player.fullnessDuration = 3;
+                        this.player.inv.splice(index, 1);
+                    } else if (item.type === 'food_omusubi') {
+                        this.player.food = this.player.maxFood;
+                        UI.log(`${item.name}を食べた。お腹がパンパンになった！`);
                         this.player.inv.splice(index, 1);
                     } else if (item.type === 'potion') {
                         if (this.player.hp >= this.player.maxHp) {
@@ -3937,7 +4742,7 @@
             }
 
             // 敵の死亡判定と経験値獲得処理の共通化
-            checkEnemyDeath(enemy) {
+            checkEnemyDeath(enemy, attacker = this.player) {
                 if (enemy.hp <= 0 && enemy.hp !== -9999) {
                     // 創造主の第2形態移行チェック (経験値獲得前に行う)
                     if (enemy.baseType === '創造主' && enemy.phase === 1) {
@@ -3957,7 +4762,7 @@
                     UI.log(`${enemy.type}を倒し、${gainedExp} の経験値を得た！`);
                     this.player.exp = (this.player.exp || 0) + gainedExp;
 
-                    // 覚醒ゲージ「敵撃破」で+20
+                    // 覚醒ゲージ「敵撃破」で+20 (アタッカーに関わらずプレイヤーに入る)
                     if (this.player.awakenTurns === 0) {
                         this.player.awakenGauge = Math.min(this.player.awakenMax, this.player.awakenGauge + 20);
                         this.updateAwakenButton();
@@ -4162,25 +4967,116 @@
             }
 
             setupInput() {
-                // PCキーボード操作 (矢印キー & テンキー)
+                const keyToDir = (key) => {
+                    switch (key) {
+                        case 'ArrowUp': case '8': case 'w': case 'W': return { dx: 0, dy: -1 };
+                        case 'ArrowDown': case '2': case 's': case 'S': return { dx: 0, dy: 1 };
+                        case 'ArrowLeft': case '4': case 'a': case 'A': return { dx: -1, dy: 0 };
+                        case 'ArrowRight': case '6': case 'd': case 'D': return { dx: 1, dy: 0 };
+                        case '7': case 'Home': return { dx: -1, dy: -1 };
+                        case '9': case 'PageUp': return { dx: 1, dy: -1 };
+                        case '1': case 'End': return { dx: -1, dy: 1 };
+                        case '3': case 'PageDown': return { dx: 1, dy: 1 };
+                        default: return null;
+                    }
+                };
+                const recomputeHeldFromKeys = () => {
+                    let dx = 0, dy = 0;
+                    this.keysDown.forEach((k) => {
+                        const d = keyToDir(k);
+                        if (!d) return;
+                        dx += d.dx;
+                        dy += d.dy;
+                    });
+                    dx = Math.max(-1, Math.min(1, dx));
+                    dy = Math.max(-1, Math.min(1, dy));
+                    this.heldMove = (dx || dy) ? { dx, dy } : null;
+                };
+
                 window.addEventListener('keydown', (e) => {
                     if (this.isConversationActive()) return;
-                    let mx = 0, my = 0;
-                    switch (e.key) {
-                        case 'ArrowUp': case '8': my = -1; break;
-                        case 'ArrowDown': case '2': my = 1; break;
-                        case 'ArrowLeft': case '4': mx = -1; break;
-                        case 'ArrowRight': case '6': mx = 1; break;
-                        case '7': case 'Home': mx = -1; my = -1; break;
-                        case '9': case 'PageUp': mx = 1; my = -1; break;
-                        case '1': case 'End': mx = -1; my = 1; break;
-                        case '3': case 'PageDown': mx = 1; my = 1; break;
-                    }
-                    if (mx !== 0 || my !== 0) {
-                        e.preventDefault();
-                        this.actionMove(mx, my);
+                    const d = keyToDir(e.key);
+                    if (!d) return;
+                    e.preventDefault();
+                    this.keysDown.add(e.key);
+                    recomputeHeldFromKeys();
+                    if (!this.animBusy && this.heldMove) {
+                        this.actionMove(this.heldMove.dx, this.heldMove.dy);
                     }
                 });
+                window.addEventListener('keyup', (e) => {
+                    if (!keyToDir(e.key)) return;
+                    this.keysDown.delete(e.key);
+                    recomputeHeldFromKeys();
+                });
+                window.addEventListener('blur', () => {
+                    this.keysDown.clear();
+                    this.heldMove = null;
+                });
+
+                // スワイプ操作（キャンバス上の8方向移動・長押しで連続移動）
+                const canvasContainer = document.getElementById('canvas-container');
+                let swipeTouchStartX = 0;
+                let swipeTouchStartY = 0;
+                let swipeMoveX = 0;
+                let swipeMoveY = 0;
+                const SWIPE_THRESHOLD = 18;
+
+                // 角度から8方向(mx,my)を計算するヘルパー
+                const angleToDir = (dx, dy) => {
+                    const angle = Math.atan2(dy, dx);
+                    const PI = Math.PI;
+                    let mx = 0, my = 0;
+                    if      (angle >  -PI/8  && angle <=  PI/8)  { mx =  1; my =  0; }
+                    else if (angle >   PI/8  && angle <= 3*PI/8) { mx =  1; my =  1; }
+                    else if (angle > 3*PI/8  && angle <= 5*PI/8) { mx =  0; my =  1; }
+                    else if (angle > 5*PI/8  && angle <= 7*PI/8) { mx = -1; my =  1; }
+                    else if (angle > 7*PI/8  || angle <= -7*PI/8){ mx = -1; my =  0; }
+                    else if (angle > -7*PI/8 && angle <= -5*PI/8){ mx = -1; my = -1; }
+                    else if (angle > -5*PI/8 && angle <= -3*PI/8){ mx =  0; my = -1; }
+                    else if (angle > -3*PI/8 && angle <= -PI/8)  { mx =  1; my = -1; }
+                    return { mx, my };
+                };
+
+                // 連続移動を止めるヘルパー
+                const stopSwipeRepeat = () => {
+                    swipeMoveX = 0;
+                    swipeMoveY = 0;
+                    if (!this.keysDown.size) this.heldMove = null;
+                };
+
+                canvasContainer.addEventListener('touchstart', (e) => {
+                    if (this.isConversationActive()) return;
+                    stopSwipeRepeat();
+                    swipeTouchStartX = e.touches[0].clientX;
+                    swipeTouchStartY = e.touches[0].clientY;
+                }, { passive: true });
+
+                canvasContainer.addEventListener('touchmove', (e) => {
+                    if (this.isConversationActive()) return;
+                    const dx = e.touches[0].clientX - swipeTouchStartX;
+                    const dy = e.touches[0].clientY - swipeTouchStartY;
+                    if (Math.abs(dx) < SWIPE_THRESHOLD && Math.abs(dy) < SWIPE_THRESHOLD) return;
+
+                    const { mx, my } = angleToDir(dx, dy);
+                    const first = (mx !== swipeMoveX || my !== swipeMoveY);
+                    swipeMoveX = mx;
+                    swipeMoveY = my;
+                    this.heldMove = { dx: mx, dy: my };
+                    if (first && !this.animBusy) {
+                        SoundManager.playUI();
+                        this.actionMove(mx, my);
+                    }
+                }, { passive: true });
+
+                canvasContainer.addEventListener('touchend', () => {
+                    // 指を離したら連続移動を停止
+                    stopSwipeRepeat();
+                }, { passive: true });
+
+                canvasContainer.addEventListener('touchcancel', () => {
+                    stopSwipeRepeat();
+                }, { passive: true });
 
                 // アクションボタン
                 document.getElementById('btn-stay').addEventListener('click', () => {
@@ -4189,7 +5085,7 @@
                     this.openSaveLoadMenu();
                 });
                 document.getElementById('btn-action').addEventListener('click', () => {
-                    if (this.isConversationActive()) return;
+                    if (this.isConversationActive() || this.animBusy) return;
                     if (this.player.awakenTurns > 0) {
                         SoundManager.playUI();
                         UI.log('覚醒中です！（残り ' + this.player.awakenTurns + ' ターン）');
@@ -4207,7 +5103,7 @@
                     }
                 });
                 document.getElementById('btn-attack').addEventListener('click', () => {
-                    if (this.isConversationActive()) return;
+                    if (this.isConversationActive() || this.animBusy) return;
                     const tile = this.map.getTile(this.player.x, this.player.y);
                     if (tile === TILE.STORAGE) {
                         SoundManager.playUI();
@@ -4308,6 +5204,7 @@
                 // 方向ボタン操作（画面上の方向キー）
                 document.querySelectorAll('.btn-pad[data-dir]').forEach(btn => {
                     btn.addEventListener('click', () => {
+                        if (this.animBusy) return;
                         SoundManager.playUI();
                         const dir = btn.getAttribute('data-dir');
                         let mx = 0, my = 0;
@@ -4339,14 +5236,29 @@
 
                 document.getElementById('btn-dir-change').addEventListener('click', () => {
                     if (this.isConversationActive()) return;
-                    this.isDirectionMode = !this.isDirectionMode;
-                    const btn = document.getElementById('btn-dir-change');
-                    if (btn) {
-                        btn.style.background = this.isDirectionMode ? '#ffeb3b' : '';
-                        btn.style.color = this.isDirectionMode ? '#000' : '';
+                    // 方向パッドの表示/非表示を切り替え
+                    const dirPad = document.getElementById('dir-pad');
+                    const isVisible = !dirPad.classList.contains('collapsed');
+                    if (isVisible) {
+                        dirPad.classList.add('collapsed');
+                    } else {
+                        dirPad.classList.remove('collapsed');
                     }
+                });
+
+                // 方向パッド中央「向」ボタン：向きモード切り替え
+                document.getElementById('btn-dir-pad-center').addEventListener('click', () => {
+                    if (this.isConversationActive()) return;
+                    this.isDirectionMode = !this.isDirectionMode;
+                    const btn = document.getElementById('btn-dir-pad-center');
                     if (this.isDirectionMode) {
-                        UI.log("方向転換モード：移動ボタンで向きだけを変えられます。");
+                        btn.style.background = '#ffeb3b';
+                        btn.style.color = '#000';
+                        UI.log('向きモードON：移動キーで向きだけを変えます。');
+                    } else {
+                        btn.style.background = '';
+                        btn.style.color = '';
+                        UI.log('向きモードOFF：通常移動に戻りました。');
                     }
                 });
                 document.getElementById('btn-menu-sort').addEventListener('click', () => {
@@ -4359,9 +5271,13 @@
                 });
             }
 
-            draw() {
-                const cx = Math.max(0, Math.min(this.player.x * TILE_SIZE - this.canvas.width / 2, this.map.width * TILE_SIZE - this.canvas.width));
-                const cy = Math.max(0, Math.min(this.player.y * TILE_SIZE - this.canvas.height / 2, this.map.height * TILE_SIZE - this.canvas.height));
+            draw(now) {
+                if (!this.map || !this.player) return;
+                now = now || this._rafNow || performance.now();
+                const pVis = entityVisualPos(this.player, now);
+                // カメラ座標を整数化して表示のボヤけを防止
+                const cx = Math.floor(Math.max(0, Math.min(pVis.x * TILE_SIZE - this.canvas.width / 2, this.map.width * TILE_SIZE - this.canvas.width)));
+                const cy = Math.floor(Math.max(0, Math.min(pVis.y * TILE_SIZE - this.canvas.height / 2, this.map.height * TILE_SIZE - this.canvas.height)));
                 this.camera = { x: cx, y: cy };
                 this.offsetX = -cx;
                 this.offsetY = -cy;
@@ -4405,6 +5321,18 @@
                             if (tile === TILE.STAIRS) this.ctx.drawImage(PixelArtEngine.textures.tile_stairs, px, py);
                             else if (tile === TILE.STORAGE) this.ctx.drawImage(PixelArtEngine.textures.tile_storage, px, py);
                             else if (tile === TILE.BASE_EXIT) this.ctx.drawImage(PixelArtEngine.textures.tile_base_exit, px, py);
+                            else if (tile === TILE.NPC_FRAMBOISE) {
+                                const huraImg = PixelArtEngine.externalTextures.npc_hura;
+                                if (huraImg && huraImg.complete) {
+                                    this.ctx.drawImage(huraImg, px, py, TILE_SIZE, TILE_SIZE);
+                                } else {
+                                    // 代替描画（ピンクの円など）
+                                    this.ctx.fillStyle = '#f06292';
+                                    this.ctx.beginPath();
+                                    this.ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, TILE_SIZE / 3, 0, Math.PI * 2);
+                                    this.ctx.fill();
+                                }
+                            }
                         }
                     }
                 }
@@ -4415,6 +5343,7 @@
                     if (px >= -TILE_SIZE && px <= this.canvas.width && py >= -TILE_SIZE && py <= this.canvas.height) {
                         let tex;
                         if (item.type === 'food') tex = PixelArtEngine.externalTextures.item_food_img || PixelArtEngine.textures.item_food;
+                        else if (item.type === 'food_omusubi') tex = PixelArtEngine.textures.item_omusubi;
                         else if (item.type === 'potion') tex = PixelArtEngine.externalTextures.item_potion_img || PixelArtEngine.textures.item_potion;
                         else if (item.type === 'disk_atk') tex = PixelArtEngine.textures.item_heart_atk;
                         else if (item.type === 'disk_def') tex = PixelArtEngine.textures.item_heart_def;
@@ -4426,13 +5355,32 @@
 
                 this.enemies.forEach(enemy => {
                     if (enemy.hp > 0) {
-                        const px = enemy.x * TILE_SIZE - cx;
-                        const py = enemy.y * TILE_SIZE - cy;
-                        const eDef = ENEMY_DEFS[enemy.type];
-                        const eSize = (eDef && eDef.size) ? eDef.size : 1;
+                        const vis = entityVisualPos(enemy, now);
+                        const px = vis.x * TILE_SIZE - cx;
+                        const py = vis.y * TILE_SIZE - cy;
+                        const eDef = ENEMY_DEFS[enemy.type] || ENEMY_DEFS[enemy.baseType];
+                        const eSize = (eDef && eDef.size) ? eDef.size : (enemy.size || 1);
                         const drawW = TILE_SIZE * eSize;
                         const drawH = TILE_SIZE * eSize;
                         if (px >= -drawW && px <= this.canvas.width && py >= -drawH && py <= this.canvas.height) {
+                            let filter = null;
+                            let alpha = 1;
+                            if (enemy.isGod) filter = 'hue-rotate(35deg) saturate(1.35) brightness(1.12)';
+                            if (enemy.canPhaseWall) {
+                                alpha = 0.78;
+                                filter = (filter ? filter + ' ' : '') + 'brightness(0.62) hue-rotate(210deg)';
+                            }
+                            if (enemy.type === 'アダマンタイト' && enemy.hp < enemy.maxHp * 0.5) {
+                                filter = 'drop-shadow(0 0 6px red) saturate(1.5) hue-rotate(-10deg)';
+                            }
+                            if (enemy.baseType === '創造主' && enemy.isPhase2) {
+                                filter = 'brightness(1.2) drop-shadow(0 0 15px gold)';
+                            }
+                            const hqKey = enemy.spriteName || 'enemy_slime';
+                            const drewHq = SpriteBank.draw(this.ctx, hqKey, enemy, px, py, TILE_SIZE, TILE_SIZE, now, {
+                                size: eSize, filter, alpha
+                            });
+                            if (!drewHq) {
                             const tex = PixelArtEngine.textures[enemy.spriteName] || PixelArtEngine.textures.enemy_slime;
                             if (enemy.type === 'ダークもちにゃふぇ' && PixelArtEngine.externalTextures.enemy_dark_moti_img) {
                                 const darkMotiImg = PixelArtEngine.externalTextures.enemy_dark_moti_img;
@@ -4458,6 +5406,7 @@
                                 this.ctx.restore();
                             } else {
                                 this.ctx.drawImage(tex, px, py, drawW, drawH);
+                            }
                             }
 
                             if (enemy.activeEffect) {
@@ -4514,10 +5463,61 @@
                     }
                 });
 
-                const px = this.player.x * TILE_SIZE - cx;
-                const py = this.player.y * TILE_SIZE - cy;
+                // 仲間の描画（複数対応・例外対策追加）
+                this.companions.forEach(comp => {
+                    try {
+                        if (comp.hp <= 0) return;
+                        const visC = entityVisualPos(comp, now);
+                        const px = visC.x * TILE_SIZE - cx;
+                        const py = visC.y * TILE_SIZE - cy;
+                        if (px >= -TILE_SIZE && px <= this.canvas.width && py >= -TILE_SIZE && py <= this.canvas.height) {
+                            const targetSize = Math.round(TILE_SIZE * CHAR_SCALE);
+                            let img, configMap;
+
+                            if (comp.type === 'ぱっちさん') {
+                                img = PixelArtEngine.pattiImg;
+                                configMap = PixelArtEngine.PATI_SPRITE_CONFIG;
+                            } else {
+                                img = PixelArtEngine.omusubiImg;
+                                configMap = PixelArtEngine.OMUSUBI_SPRITE_CONFIG;
+                            }
+
+                            const frames = configMap[comp.direction || 'down'] || configMap['down'];
+                            const sprite = frames[comp.walkFrame % frames.length];
+
+                            if (img && img.complete && sprite) {
+                                const scale = Math.min(targetSize / sprite.sw, targetSize / sprite.sh);
+                                const drawW = sprite.sw * scale;
+                                const drawH = sprite.sh * scale;
+                                const offX = (TILE_SIZE - drawW) / 2;
+                                const hop = (comp.animKind === 'walk')
+                                    ? Math.sin(comp.animProgress(now) * Math.PI) * TILE_SIZE * 0.22
+                                    : Math.sin(now / 320) * 1.4;
+                                const offY = TILE_SIZE - drawH + 4 - hop;
+                                this.ctx.imageSmoothingEnabled = true;
+                                this.ctx.drawImage(
+                                    img,
+                                    sprite.sx, sprite.sy, sprite.sw, sprite.sh,
+                                    px + offX, py + offY, drawW, drawH
+                                );
+                            }
+
+                            // HPバー
+                            const hpRatio = comp.hp / comp.maxHp;
+                            this.ctx.fillStyle = 'red';
+                            this.ctx.fillRect(px, py - 7, TILE_SIZE, 5);
+                            this.ctx.fillStyle = '#4caf50'; // コンパニオンは緑
+                            this.ctx.fillRect(px, py - 7, TILE_SIZE * Math.max(0, hpRatio), 5);
+                        }
+                    } catch (e) {
+                        console.error('Companion Draw Error:', e);
+                    }
+                });
+
+                const px = pVis.x * TILE_SIZE - cx;
+                const py = pVis.y * TILE_SIZE - cy;
                 const dir = this.player.direction || 'down';
-                const atk = this.player.isAttacking;
+                const atk = this.player.isAttacking || this.player.animKind === 'attack';
 
                 if (this.player.isFiring && PixelArtEngine.textures.fx_fire) {
                     let fdx = 0, fdy = 0;
@@ -4527,22 +5527,121 @@
                     for (let i = 1; i <= 2; i++) this.ctx.drawImage(PixelArtEngine.textures.fx_fire, px + fdx * i * TILE_SIZE, py + fdy * i * TILE_SIZE);
                 }
 
-                if (PixelArtEngine.mochinyafeImg && PixelArtEngine.mochinyafeImg.complete) {
-                    let drawDir = dir;
-                    if (dir === 'up-left' || dir === 'up-right') drawDir = 'up';
-                    else if (dir === 'down-left' || dir === 'down-right') drawDir = 'down';
-                    const dirIndices = { 'down': 0, 'left': 1, 'right': 2, 'up': 3 };
-                    let baseCol = dirIndices[drawDir] || 0;
-                    let col = baseCol;
+                const drewPlayer = SpriteBank.draw(this.ctx, 'player', this.player, px, py, TILE_SIZE, TILE_SIZE, now, {});
+                if (!drewPlayer && PixelArtEngine.mochinyafeImg && PixelArtEngine.mochinyafeImg.complete) {
+                    let sprite;
                     if (atk) {
-                        let atkCol = baseCol;
-                        if (baseCol === 1) atkCol = 2; else if (baseCol === 2) atkCol = 1;
-                        col = atkCol + 4;
+                        sprite = PLAYER_SPRITE_CONFIG.attack[dir] || PLAYER_SPRITE_CONFIG.attack['down'];
+                    } else {
+                        const frames = PLAYER_SPRITE_CONFIG[dir] || PLAYER_SPRITE_CONFIG['down'];
+                        sprite = frames[this.player.walkFrame % frames.length];
                     }
-                    this.ctx.drawImage(PixelArtEngine.mochinyafeImg, col * 64, 0, 64, 64, px - TILE_SIZE / 2, py - TILE_SIZE / 2, TILE_SIZE * 2, TILE_SIZE * 2);
-                } else {
+
+                    if (sprite) {
+                        const targetSize = Math.round(TILE_SIZE * CHAR_SCALE);
+                        const scale = Math.min(targetSize / sprite.sw, targetSize / sprite.sh);
+                        const drawW = sprite.sw * scale;
+                        const drawH = sprite.sh * scale;
+                        const offX = (TILE_SIZE - drawW) / 2;
+                        const offY = TILE_SIZE - drawH + 4;
+
+                        this.ctx.imageSmoothingEnabled = true;
+                        this.ctx.drawImage(
+                            PixelArtEngine.mochinyafeImg,
+                            sprite.sx, sprite.sy, sprite.sw, sprite.sh,
+                            px + offX, py + offY, drawW, drawH
+                        );
+                    }
+                } else if (!drewPlayer) {
                     const playerTex = PixelArtEngine.textures[atk ? `player_atk_${dir}` : (dir === 'down' ? 'player' : `player_${dir}`)] || PixelArtEngine.textures.player;
                     this.ctx.drawImage(playerTex, px, py);
+                }
+
+                // ミニマップの描画
+                this.drawMinimap();
+            }
+
+            drawMinimap() {
+                if (!this.minimapCtx) return;
+                const mCtx = this.minimapCtx;
+                const dotSize = 2; // 1タイル2px
+
+                // キャンバスクリア
+                mCtx.clearRect(0, 0, this.minimapCanvas.width, this.minimapCanvas.height);
+
+                // マップ（床・通路）の描画
+                for (let y = 0; y < this.map.height; y++) {
+                    for (let x = 0; x < this.map.width; x++) {
+                        if (!this.map.visited[y][x]) continue;
+
+                        const tile = this.map.data[y][x];
+                        if (tile === TILE.STAIRS) {
+                            mCtx.fillStyle = '#888888'; // 階段は灰色
+                            mCtx.fillRect(x * dotSize, y * dotSize, dotSize, dotSize);
+                        } else if (tile !== TILE.WALL && tile !== TILE.OUT_BOUNDARY) {
+                            mCtx.fillStyle = 'rgba(150, 150, 150, 0.4)';
+                            mCtx.fillRect(x * dotSize, y * dotSize, dotSize, dotSize);
+                        }
+                    }
+                }
+
+                // アイテムの描画 (黄)
+                this.items.forEach(item => {
+                    if (this.map.visited[item.y][item.x]) {
+                        mCtx.fillStyle = '#ffff00';
+                        mCtx.fillRect(item.x * dotSize, item.y * dotSize, dotSize, dotSize);
+                    }
+                });
+
+                // 敵の描画 (赤)
+                this.enemies.forEach(enemy => {
+                    if (enemy.hp > 0 && this.map.visited[enemy.y][enemy.x]) {
+                        mCtx.fillStyle = '#ff0000';
+                        mCtx.fillRect(enemy.x * dotSize, enemy.y * dotSize, dotSize, dotSize);
+                    }
+                });
+
+                // プレイヤーの描画 (白)
+                mCtx.fillStyle = '#ffffff';
+                mCtx.fillRect(this.player.x * dotSize, this.player.y * dotSize, dotSize, dotSize);
+
+                // 仲間の描画 (緑)
+                this.companions.forEach(comp => {
+                    if (comp.hp > 0 && this.map.visited[comp.y][comp.x]) {
+                        mCtx.fillStyle = '#4caf50';
+                        mCtx.fillRect(comp.x * dotSize, comp.y * dotSize, dotSize, dotSize);
+                    }
+                });
+            }
+
+            // 探索状態を更新する
+            updateDiscovery(x, y) {
+                if (!this.map || !this.map.visited) return;
+
+                // 現在地を探索済みに
+                this.map.visited[y][x] = true;
+
+                // 部屋の中にいる場合、その部屋の全タイルを探索済みにする
+                const currentRoom = this.map.rooms.find(r =>
+                    x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
+                );
+                if (currentRoom) {
+                    for (let ry = currentRoom.y; ry < currentRoom.y + currentRoom.h; ry++) {
+                        for (let rx = currentRoom.x; rx < currentRoom.x + currentRoom.w; rx++) {
+                            this.map.visited[ry][rx] = true;
+                        }
+                    }
+                }
+
+                // 周囲1マス（3x3）を探索済みにする（通路の壁などを視覚化するため）
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        if (nx >= 0 && nx < this.map.width && ny >= 0 && ny < this.map.height) {
+                            this.map.visited[ny][nx] = true;
+                        }
+                    }
                 }
             }
 
@@ -4678,7 +5777,8 @@
                     const p = o.player;
                     this.player.lv = p.lv; this.player.hp = p.hp; this.player.maxHp = p.maxHp;
                     this.player.str = p.str; this.player.def = p.def; this.player.food = p.food;
-                    this.player.maxFood = p.maxFood; this.player.direction = p.direction;
+                    this.player.maxFood = p.maxFood; this.player.maxInv = p.maxInv || 30; // 追加：所持上限
+                    this.player.direction = p.direction;
                     this.player.fullnessDuration = p.fullnessDuration || 0;
                     this.player.awakenGauge = p.awakenGauge || 0; this.player.awakenTurns = p.awakenTurns || 0;
                     this.player.isDirectionMode = p.isDirectionMode || false;
@@ -4719,6 +5819,7 @@
 
             PixelArtEngine.loadTextures(TILE_SIZE).then(() => {
                 game = new GameManager();
+                SpriteBank.loadAll().then(() => { if (game) game.draw(); }).catch(() => {});
 
                 // セーブデータの有無（スロット1-3）を確認
                 let hasAnySave = false;
@@ -4750,11 +5851,14 @@
 
                 // START ボタン：新規ゲーム開始（状態をリセット）
                 btnStart.addEventListener('click', () => {
-                    game.resetGame(); // 状態を初期化
+                    titleScreen.classList.add('hidden');
+                    game.resetGame();
+                    game.initFloor();
+                    game.draw();
                     showIntroConversation(() => {
-                        game.initFloor();
                         startGame();
                     });
+                    setTimeout(() => { titleScreen.style.display = 'none'; }, 400);
                 });
 
                 // 会話イベントの表示
@@ -4783,6 +5887,16 @@
                         titleScreen.style.display = 'none';
                     }, 1000);
                 }
+            }).catch((err) => {
+                console.error('loadTextures failed', err);
+                game = new GameManager();
+                btnStart.addEventListener('click', () => {
+                    game.resetGame();
+                    titleScreen.classList.add('hidden');
+                    titleScreen.style.display = 'none';
+                    game.initFloor();
+                    game.draw();
+                });
             });
         });
     </script>
