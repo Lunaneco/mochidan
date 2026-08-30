@@ -1243,65 +1243,83 @@
                 this.rooms.push({ x: rx, y: ry, w: rw, h: rh, cx: Math.floor(rx + rw / 2), cy: Math.floor(ry + rh / 2) });
             }
 
-            findPath(startX, startY, targetX, targetY, enemies = [], player = null) {
-                // A* アルゴリズム
-                const openSet = [{ x: startX, y: startY, g: 0, h: this.getDist(startX, startY, targetX, targetY), f: 0, parent: null }];
-                const closedSet = new Set();
-                const mapKey = (x, y) => `${x},${y}`;
+            findPath(startX, startY, targetX, targetY, enemies = [], player = null, extraBlockers = []) {
+                if (startX === targetX && startY === targetY) return [];
+                const mapKey = (x, y) => (y * this.width + x);
+                const blocked = new Set();
+                if (enemies) {
+                    for (let i = 0; i < enemies.length; i++) {
+                        const e = enemies[i];
+                        if (e && e.hp > 0 && (e.x !== targetX || e.y !== targetY)) blocked.add(mapKey(e.x, e.y));
+                    }
+                }
+                if (player && (player.x !== targetX || player.y !== targetY)) blocked.add(mapKey(player.x, player.y));
+                if (extraBlockers) {
+                    for (let i = 0; i < extraBlockers.length; i++) {
+                        const b = extraBlockers[i];
+                        if (b && (b.x !== startX || b.y !== startY) && (b.x !== targetX || b.y !== targetY)) {
+                            blocked.add(mapKey(b.x, b.y));
+                        }
+                    }
+                }
 
-                openSet[0].f = openSet[0].h;
-
-                const MAX_ITERATIONS = 500;
+                const gScore = new Map();
+                const cameFrom = new Map();
+                const open = [{ x: startX, y: startY, f: this.getDist(startX, startY, targetX, targetY) }];
+                gScore.set(mapKey(startX, startY), 0);
+                const inOpen = new Set([mapKey(startX, startY)]);
+                const closed = new Set();
+                const MAX_ITERATIONS = 120;
                 let iterations = 0;
 
-                while (openSet.length > 0 && iterations < MAX_ITERATIONS) {
+                while (open.length > 0 && iterations < MAX_ITERATIONS) {
                     iterations++;
-                    openSet.sort((a, b) => a.f - b.f);
-                    const current = openSet.shift();
+                    let bestI = 0;
+                    for (let i = 1; i < open.length; i++) {
+                        if (open[i].f < open[bestI].f) bestI = i;
+                    }
+                    const current = open[bestI];
+                    const last = open.pop();
+                    if (bestI < open.length) open[bestI] = last;
+                    const cKey = mapKey(current.x, current.y);
+                    inOpen.delete(cKey);
+                    if (closed.has(cKey)) continue;
+                    closed.add(cKey);
 
                     if (current.x === targetX && current.y === targetY) {
                         const path = [];
-                        let temp = current;
-                        while (temp.parent) {
-                            path.push({ x: temp.x, y: temp.y });
-                            temp = temp.parent;
+                        let k = cKey;
+                        let x = current.x, y = current.y;
+                        while (cameFrom.has(k)) {
+                            path.push({ x, y });
+                            const p = cameFrom.get(k);
+                            x = p.x;
+                            y = p.y;
+                            k = mapKey(x, y);
+                            if (path.length > 80) break;
                         }
                         return path.reverse();
                     }
 
-                    closedSet.add(mapKey(current.x, current.y));
-
+                    const cg = gScore.get(cKey);
                     for (let dy = -1; dy <= 1; dy++) {
                         for (let dx = -1; dx <= 1; dx++) {
                             if (dx === 0 && dy === 0) continue;
                             const nx = current.x + dx;
                             const ny = current.y + dy;
-                            const key = mapKey(nx, ny);
-
-                            if (closedSet.has(key)) continue;
                             if (nx < 0 || nx >= this.width || ny < 0 || ny >= this.height) continue;
-
-                            if (this.isWalkable(nx, ny)) {
-                                // 目的地以外の敵・プレイヤーを障害物とみなす
-                                const isOccupied = (enemies && enemies.some(e => e.x === nx && e.y === ny && e.hp > 0 && (nx !== targetX || ny !== targetY))) ||
-                                                 (player && player.x === nx && player.y === ny && (nx !== targetX || ny !== targetY));
-
-                                if (!isOccupied) {
-                                    const g = current.g + 1;
-                                    const h = this.getDist(nx, ny, targetX, targetY);
-                                    const f = g + h;
-
-                                    const existing = openSet.find(node => node.x === nx && node.y === ny);
-                                    if (existing) {
-                                        if (g < existing.g) {
-                                            existing.g = g;
-                                            existing.f = f;
-                                            existing.parent = current;
-                                        }
-                                    } else {
-                                        openSet.push({ x: nx, y: ny, g, h, f, parent: current });
-                                    }
-                                }
+                            const nKey = mapKey(nx, ny);
+                            if (closed.has(nKey)) continue;
+                            if (!this.isWalkable(nx, ny)) continue;
+                            if (blocked.has(nKey)) continue;
+                            const ng = cg + 1;
+                            const prevG = gScore.get(nKey);
+                            if (prevG !== undefined && ng >= prevG) continue;
+                            gScore.set(nKey, ng);
+                            cameFrom.set(nKey, { x: current.x, y: current.y });
+                            if (!inOpen.has(nKey)) {
+                                open.push({ x: nx, y: ny, f: ng + this.getDist(nx, ny, targetX, targetY) });
+                                inOpen.add(nKey);
                             }
                         }
                     }
@@ -1628,7 +1646,8 @@
                         const ny = this.y + dir.y;
                         if (map.isWalkable(nx, ny) && (nx !== player.x || ny !== player.y)) {
                             const occupied = enemies.some(e => e !== this && e.x === nx && e.y === ny && e.hp > 0);
-                            if (!occupied) {
+                            const companionHere = gameManager.companions && gameManager.companions.some(c => c.hp > 0 && c.x === nx && c.y === ny);
+                            if (!occupied && !companionHere) {
                                 this.x = nx;
                                 this.y = ny;
                                 break;
@@ -1840,8 +1859,7 @@
                     const nx = this.x + mx;
                     const ny = this.y + my;
                     if (map.isWalkable(nx, ny) && (nx !== player.x || ny !== player.y)) {
-                        // 仲間がいる場合は重ならないようにする
-                        const isCompanionHere = gameManager.companion && gameManager.companion.x === nx && gameManager.companion.y === ny;
+                        const isCompanionHere = gameManager.companions && gameManager.companions.some(c => c.hp > 0 && c.x === nx && c.y === ny);
                         if (!isCompanionHere) {
                             const occupied = enemies.some(e => e !== this && e.x === nx && e.y === ny && e.hp > 0);
                             if (!occupied) { this.x = nx; this.y = ny; }
@@ -1930,7 +1948,7 @@
                         this.str = player.str;
                         this.def = player.def;
                     } else if (distToPlayer <= 10) {
-                        this.moveToward(player.x, player.y, map, enemies, player);
+                        this.moveToward(player.x, player.y, map, enemies, player, gameManager);
                     }
                 } else {
                     // 仲間になった後：敵を優先して攻撃、いなければプレイヤーに追従
@@ -1953,77 +1971,70 @@
                             this.attack(target, gameManager);
                         } else {
                             // 敵に近づく
-                            this.moveToward(target.x, target.y, map, enemies, player);
+                            this.moveToward(target.x, target.y, map, enemies, player, gameManager);
                         }
                     } else if (distToPlayer > 1) {
                         // 敵がいない場合はプレイヤーに追従
-                        this.moveToward(player.x, player.y, map, enemies, player);
+                        this.moveToward(player.x, player.y, map, enemies, player, gameManager);
                     }
                 }
             }
 
-            moveToward(tx, ty, map, enemies, player) {
-                // A*による経路探索
-                const path = map.findPath(this.x, this.y, tx, ty, enemies, player);
+            tileBlocked(nx, ny, map, enemies, player, gameManager) {
+                if (!map.isWalkable(nx, ny)) return true;
+                if (player && player.x === nx && player.y === ny) return true;
+                if (enemies && enemies.some(e => e.hp > 0 && e.x === nx && e.y === ny)) return true;
+                if (gameManager && gameManager.companions) {
+                    if (gameManager.companions.some(c => c !== this && c.hp > 0 && c.x === nx && c.y === ny)) return true;
+                }
+                return false;
+            }
 
-                if (path && path.length > 0) {
-                    const nextStep = path[0];
-                    const mx = nextStep.x - this.x;
-                    const my = nextStep.y - this.y;
-
-                    // 向きの更新
-                    if (mx > 0 && my > 0) this.direction = 'down-right';
-                    else if (mx > 0 && my < 0) this.direction = 'up-right';
-                    else if (mx < 0 && my > 0) this.direction = 'down-left';
-                    else if (mx < 0 && my < 0) this.direction = 'up-left';
-                    else if (mx > 0) this.direction = 'right';
-                    else if (mx < 0) this.direction = 'left';
-                    else if (my > 0) this.direction = 'down';
-                    else if (my < 0) this.direction = 'up';
-
-                    this.x = nextStep.x;
-                    this.y = nextStep.y;
-                    this.walkFrame++;
-                } else {
-                    // 経路が見つからない場合のフォールバック（従来の距離優先移動）
-                    const candidates = [];
-                    for (let dy = -1; dy <= 1; dy++) {
-                        for (let dx = -1; dx <= 1; dx++) {
-                            if (dx === 0 && dy === 0) continue;
-                            const nx = this.x + dx;
-                            const ny = this.y + dy;
-                            if (map.isWalkable(nx, ny) && (nx !== player.x || ny !== player.y)) {
-                                const occupied = enemies.some(e => e.x === nx && e.y === ny && e.hp > 0);
-                                if (!occupied) {
-                                    const dist = Math.max(Math.abs(tx - nx), Math.abs(ty - ny));
-                                    candidates.push({ x: nx, y: ny, dx, dy, dist });
-                                }
-                            }
+            moveToward(tx, ty, map, enemies, player, gameManager) {
+                const here = Math.max(Math.abs(tx - this.x), Math.abs(ty - this.y));
+                let best = null;
+                let bestDist = here;
+                let bestTie = 99;
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const nx = this.x + dx;
+                        const ny = this.y + dy;
+                        if (this.tileBlocked(nx, ny, map, enemies, player, gameManager)) continue;
+                        const dist = Math.max(Math.abs(tx - nx), Math.abs(ty - ny));
+                        const cardinal = (dx === 0 || dy === 0) ? 0 : 1;
+                        if (dist < bestDist || (dist === bestDist && cardinal < bestTie)) {
+                            bestDist = dist;
+                            bestTie = cardinal;
+                            best = { x: nx, y: ny, dx, dy };
                         }
                     }
-                    if (candidates.length > 0) {
-                        candidates.sort((a, b) => a.dist - b.dist);
-                        const best = candidates[0];
-                        const mx = best.dx;
-                        const my = best.dy;
-                        if (mx > 0 && my > 0) this.direction = 'down-right';
-                        else if (mx > 0 && my < 0) this.direction = 'up-right';
-                        else if (mx < 0 && my > 0) this.direction = 'down-left';
-                        else if (mx < 0 && my < 0) this.direction = 'up-left';
-                        else if (mx > 0) this.direction = 'right';
-                        else if (mx < 0) this.direction = 'left';
-                        else if (my > 0) this.direction = 'down';
-                        else if (my < 0) this.direction = 'up';
-                        this.x = best.x;
-                        this.y = best.y;
-                        this.walkFrame++;
-                    }
                 }
+                if (!best) return;
+                this.faceToward(best.dx, best.dy);
+                this.x = best.x;
+                this.y = best.y;
+                this.walkFrame++;
+            }
+
+            faceToward(dx, dy) {
+                const mx = Math.sign(dx);
+                const my = Math.sign(dy);
+                if (mx > 0 && my > 0) this.direction = 'down-right';
+                else if (mx > 0 && my < 0) this.direction = 'up-right';
+                else if (mx < 0 && my > 0) this.direction = 'down-left';
+                else if (mx < 0 && my < 0) this.direction = 'up-left';
+                else if (mx > 0) this.direction = 'right';
+                else if (mx < 0) this.direction = 'left';
+                else if (my > 0) this.direction = 'down';
+                else if (my < 0) this.direction = 'up';
             }
 
             attack(target, gameManager) {
+                const dx = target.x - this.x;
+                const dy = target.y - this.y;
+                this.faceToward(dx, dy);
                 this.markAttack(target.x, target.y);
-                startAttackToward(this, target.x - this.x, target.y - this.y, performance.now());
                 SoundManager.playAttack();
                 let damage = Math.max(1, this.str - Math.floor(target.def / 2));
                 target.hp -= damage;
@@ -2082,6 +2093,11 @@
             attack(target, gameManager) {
                 // ワンステップ・ビハインドの発動判定 (15%の確率)
                 if (Math.random() < 0.15 && target.oneStepBehindTurns === 0) {
+                    const dx = target.x - this.x;
+                    const dy = target.y - this.y;
+                    this.faceToward(dx, dy);
+                    this.markAttack(target.x, target.y);
+                    SoundManager.playAttack();
                     UI.log(`${this.type}の特殊攻撃！「ワンステップ・ビハインド」！`);
                     const isBoss = ['巨大ハリネズミ', 'アダマンタイト', 'ダークもちにゃふぇ', '創造主'].includes(target.type);
                     if (isBoss) {
@@ -3222,33 +3238,42 @@
                     };
                 }
                 this.animBusy = true;
-                if (!this.anyAnimating(performance.now())) {
-                    const cb = this._animThen;
-                    this._animThen = null;
-                    this.animBusy = false;
-                    if (cb) cb();
+                this._animBusySince = performance.now();
+                if (!this.anyAnimating(this._animBusySince)) {
+                    this.finishAnims();
                 }
+            }
+
+            finishAnims() {
+                this.enemies.forEach(e => { if (e.animKind !== 'idle') e.animKind = 'idle'; });
+                this.companions.forEach(c => { if (c.animKind !== 'idle') c.animKind = 'idle'; });
+                if (this.player && this.player.animKind !== 'idle') {
+                    this.player.animKind = 'idle';
+                    this.player.isAttacking = false;
+                }
+                this.animBusy = false;
+                const cb = this._animThen;
+                this._animThen = null;
+                if (cb) cb();
             }
 
             startAnimLoop() {
                 const loop = (now) => {
                     this._rafNow = now;
-                    this.draw(now);
-                    if (this.animBusy && !this.anyAnimating(now)) {
-                        this.enemies.forEach(e => { if (e.animKind !== 'idle') e.animKind = 'idle'; });
-                        this.companions.forEach(c => { if (c.animKind !== 'idle') c.animKind = 'idle'; });
-                        if (this.player.animKind !== 'idle' && !entityIsAnimating(this.player, now)) {
-                            this.player.animKind = 'idle';
-                            this.player.isAttacking = false;
+                    try {
+                        this.draw(now);
+                        const stuck = this.animBusy && this._animBusySince && (now - this._animBusySince > 1200);
+                        if (this.animBusy && (!this.anyAnimating(now) || stuck)) {
+                            this.finishAnims();
                         }
+                        if (!this.animBusy && this.heldMove && this.player.hp > 0 && !this.isConversationActive() && now >= this._heldCooldownUntil) {
+                            this.actionMove(this.heldMove.dx, this.heldMove.dy);
+                            if (!this.animBusy) this._heldCooldownUntil = now + 70;
+                        }
+                    } catch (err) {
+                        console.error('game loop', err);
                         this.animBusy = false;
-                        const cb = this._animThen;
                         this._animThen = null;
-                        if (cb) cb();
-                    }
-                    if (!this.animBusy && this.heldMove && this.player.hp > 0 && !this.isConversationActive() && now >= this._heldCooldownUntil) {
-                        this.actionMove(this.heldMove.dx, this.heldMove.dy);
-                        if (!this.animBusy) this._heldCooldownUntil = now + 70;
                     }
                     requestAnimationFrame(loop);
                 };
@@ -3619,6 +3644,28 @@
                     UI.log(`地下 ${this.floor}階 に降りた。`);
                 }
 
+                // デバッグ: ?helpers=1 で助っ人を隣接スポーン（攻撃モーション確認用）
+                if (typeof location !== 'undefined' && /(?:\?|&)helpers=1(?:&|$)/.test(location.search)) {
+                    const spots = [];
+                    for (let dy = -1; dy <= 1; dy++) {
+                        for (let dx = -1; dx <= 1; dx++) {
+                            if (dx === 0 && dy === 0) continue;
+                            const nx = this.player.x + dx, ny = this.player.y + dy;
+                            if (this.map.isWalkable(nx, ny)) spots.push({ x: nx, y: ny });
+                        }
+                    }
+                    if (!this.companions.some(c => c.type === 'おむすびさん') && spots[0]) {
+                        const om = new Companion(spots[0].x, spots[0].y, this.player);
+                        om.isJoined = true;
+                        this.companions.push(om);
+                    }
+                    if (!this.companions.some(c => c.type === 'ぱっちさん') && spots[1]) {
+                        const pt = new Patti(spots[1].x, spots[1].y, this.player);
+                        pt.isJoined = true;
+                        this.companions.push(pt);
+                    }
+                }
+
                 // 仲間化済みのコンパニオンのフロア移動後再配置
                 this.companions.forEach(comp => {
                     if (comp.isJoined) {
@@ -3647,6 +3694,18 @@
 
             // ターン処理の進行
             processTurn() {
+                if (this._inTurn) return;
+                this._inTurn = true;
+                try {
+                this._processTurnBody();
+                } catch (err) {
+                    console.error('processTurn', err);
+                } finally {
+                    this._inTurn = false;
+                }
+            }
+
+            _processTurnBody() {
                 let hungerDec = 0.1;
                 if (this.player.hasAbility('slow_hunger')) hungerDec = 0.05;
 
@@ -4003,8 +4062,14 @@
                     }
                 }
 
-                // 通常移動
+                // 通常移動（隣接する仲間とは入れ替わる）
                 const ox = this.player.x, oy = this.player.y;
+                const allyHere = this.companions.find(c => c.hp > 0 && c.isJoined && c.x === nx && c.y === ny);
+                if (allyHere) {
+                    allyHere.x = ox;
+                    allyHere.y = oy;
+                    startWalkFrom(allyHere, nx, ny, performance.now(), ENEMY_MOVE_ANIM_MS);
+                }
                 this.player.x = nx;
                 this.player.y = ny;
                 this.player.walkFrame = (this.player.walkFrame + 1) % 4;
@@ -5471,6 +5536,9 @@
                         const px = visC.x * TILE_SIZE - cx;
                         const py = visC.y * TILE_SIZE - cy;
                         if (px >= -TILE_SIZE && px <= this.canvas.width && py >= -TILE_SIZE && py <= this.canvas.height) {
+                            const hqKey = comp.type === 'ぱっちさん' ? 'companion_patti' : 'companion_omusubi';
+                            const drewHq = SpriteBank.draw(this.ctx, hqKey, comp, px, py, TILE_SIZE, TILE_SIZE, now, {});
+                            if (!drewHq) {
                             const targetSize = Math.round(TILE_SIZE * CHAR_SCALE);
                             let img, configMap;
 
@@ -5489,17 +5557,50 @@
                                 const scale = Math.min(targetSize / sprite.sw, targetSize / sprite.sh);
                                 const drawW = sprite.sw * scale;
                                 const drawH = sprite.sh * scale;
+                                const t = comp.animProgress(now);
+                                const kind = comp.animKind || 'idle';
+                                let hop = 0, squashY = 1, squashX = 1, lungeX = 0, lungeY = 0;
+                                if (kind === 'walk') {
+                                    hop = Math.sin(t * Math.PI) * TILE_SIZE * 0.16;
+                                } else if (kind === 'attack') {
+                                    let lung = 0;
+                                    if (t < 0.32) {
+                                        lung = -0.18 * (t / 0.32);
+                                        squashY = 1 - 0.12 * (t / 0.32);
+                                        squashX = 1 + 0.10 * (t / 0.32);
+                                    } else if (t < 0.55) {
+                                        const u = (t - 0.32) / 0.23;
+                                        lung = -0.18 + 0.72 * u;
+                                        squashY = 0.88 + 0.18 * u;
+                                        squashX = 1.10 - 0.16 * u;
+                                    } else {
+                                        const u = (t - 0.55) / 0.45;
+                                        lung = 0.54 * (1 - u);
+                                        squashY = 1.06 - 0.06 * u;
+                                        squashX = 0.94 + 0.06 * u;
+                                    }
+                                    lungeX = (comp.lungeDx || 0) * lung * TILE_SIZE;
+                                    lungeY = (comp.lungeDy || 0) * lung * TILE_SIZE;
+                                } else {
+                                    hop = Math.sin(now / 320) * 1.4;
+                                }
                                 const offX = (TILE_SIZE - drawW) / 2;
-                                const hop = (comp.animKind === 'walk')
-                                    ? Math.sin(comp.animProgress(now) * Math.PI) * TILE_SIZE * 0.22
-                                    : Math.sin(now / 320) * 1.4;
-                                const offY = TILE_SIZE - drawH + 4 - hop;
+                                const offY = TILE_SIZE - drawH + 4;
+                                const flip = (comp.faceDx || 0) < 0 || (comp.direction && (comp.direction === 'left' || (typeof comp.direction === 'string' && comp.direction.indexOf('left') >= 0)));
+                                this.ctx.save();
                                 this.ctx.imageSmoothingEnabled = true;
+                                const cx = px + offX + drawW / 2 + lungeX;
+                                const cy = py + offY + drawH + lungeY - hop;
+                                this.ctx.translate(cx, cy);
+                                this.ctx.scale((flip ? -1 : 1) * squashX, squashY);
+                                this.ctx.translate(-drawW / 2, -drawH);
                                 this.ctx.drawImage(
                                     img,
                                     sprite.sx, sprite.sy, sprite.sw, sprite.sh,
-                                    px + offX, py + offY, drawW, drawH
+                                    0, 0, drawW, drawH
                                 );
+                                this.ctx.restore();
+                            }
                             }
 
                             // HPバー
@@ -5646,12 +5747,16 @@
             }
 
             saveGame() {
-                if (this.player.hp <= 0 && !this.isAtBase) { localStorage.removeItem('diabolo_roguelike_save'); return; }
-                localStorage.setItem('diabolo_roguelike_save', JSON.stringify({
-                    floor: this.floor, isAtBase: this.isAtBase, player: this.player,
-                    mapData: this.map.data, mapRooms: this.map.rooms, enemies: this.enemies,
-                    items: this.items, baseItems: this.baseItems, storage: this.storage
-                }));
+                try {
+                    if (this.player.hp <= 0 && !this.isAtBase) { localStorage.removeItem('diabolo_roguelike_save'); return; }
+                    localStorage.setItem('diabolo_roguelike_save', JSON.stringify({
+                        floor: this.floor, isAtBase: this.isAtBase, player: this.player,
+                        mapData: this.map.data, mapRooms: this.map.rooms, enemies: this.enemies,
+                        items: this.items, baseItems: this.baseItems, storage: this.storage
+                    }));
+                } catch (e) {
+                    console.error('saveGame', e);
+                }
             }
 
             loadGame() {

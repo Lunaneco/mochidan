@@ -28,7 +28,15 @@ const HQ_SPRITE_MANIFEST = {
     enemy_boss_hedgehog: { idle: 'Assets/sprites/enemy_boss_hedgehog.png', sheet: 'Assets/sprites/enemy_boss_hedgehog_sheet.png' },
     enemy_boss_adamantite: { idle: 'Assets/sprites/enemy_boss_adamantite.png', sheet: 'Assets/sprites/enemy_boss_adamantite_sheet.png' },
     enemy_dark_moti: { idle: 'Assets/sprites/enemy_dark_moti.png' },
-    enemy_creator: { idle: 'Assets/sprites/enemy_creator.png' }
+    enemy_creator: { idle: 'Assets/sprites/enemy_creator.png' },
+    companion_omusubi: {
+        idle: 'Assets/sprites/companion_omusubi.png?v=1',
+        sheet: 'Assets/sprites/companion_omusubi_sheet.png?v=1'
+    },
+    companion_patti: {
+        idle: 'Assets/sprites/companion_patti.png?v=1',
+        sheet: 'Assets/sprites/companion_patti_sheet.png?v=1'
+    }
 };
 
 const SpriteBank = {
@@ -251,7 +259,8 @@ const SpriteBank = {
             hop = Math.sin((now || 0) / 380) * 1.1;
         }
 
-        const flip = (entity.faceDx || 0) < 0 || (entity.direction && (entity.direction === 'left' || entity.direction.indexOf('left') >= 0));
+        const dirName = (typeof entity.direction === 'string') ? entity.direction : '';
+        const flip = (entity.faceDx || 0) < 0 || dirName === 'left' || dirName.indexOf('left') >= 0;
         ctx.save();
         if (extras.filter) ctx.filter = extras.filter;
         if (extras.alpha != null) ctx.globalAlpha = extras.alpha;
@@ -312,16 +321,22 @@ function startAttackToward(entity, dx, dy, now) {
     entity.lungeDy = Math.sign(dy) || 0;
     entity.faceDx = entity.lungeDx;
     entity.faceDy = entity.lungeDy;
-    entity._didAttack = false;
 }
 
 function entityAnimProgress(entity, now) {
     if (!entity.animKind || entity.animKind === 'idle' || !entity.animDur) return 1;
-    return Math.min(1, (now - entity.animT0) / entity.animDur);
+    const t = (now - entity.animT0) / entity.animDur;
+    if (t !== t) return 1;
+    return Math.max(0, Math.min(1, t));
 }
 
 function entityIsAnimating(entity, now) {
-    return entity.animKind && entity.animKind !== 'idle' && (now - entity.animT0) < entity.animDur;
+    if (!entity.animKind || entity.animKind === 'idle' || !entity.animDur) return false;
+    const elapsed = now - entity.animT0;
+    if (elapsed !== elapsed) return false;
+    if (elapsed < 0) return true;
+    if (elapsed > entity.animDur + 250) return false;
+    return elapsed < entity.animDur;
 }
 
 function entityVisualPos(entity, now) {
