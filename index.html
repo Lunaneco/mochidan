@@ -11,15 +11,15 @@
     <title>もちにゃふぇの不思議なダンジョン</title>
     <meta name="description" content="ふとした拍子に謎のダンジョンへ迷い込んだもちにゃふぇを操作する、ターン制ローグライクRPG。">
     <link rel="canonical" href="https://lunaneco.github.io/mochidan/">
-    <link rel="icon" type="image/png" href="apple-touch-icon.png">
-    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <link rel="icon" type="image/png" href="apple-touch-icon.png?v=4">
+    <link rel="apple-touch-icon" href="apple-touch-icon.png?v=4">
     <link rel="manifest" href="site.webmanifest">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Lunaneco Games">
     <meta property="og:title" content="もちにゃふぇの不思議なダンジョン">
     <meta property="og:description" content="ふとした拍子に謎のダンジョンへ迷い込んだもちにゃふぇを操作する、ターン制ローグライクRPG。">
     <meta property="og:url" content="https://lunaneco.github.io/mochidan/">
-    <meta property="og:image" content="https://lunaneco.github.io/mochidan/Assets/og.jpg?v=6">
+    <meta property="og:image" content="https://lunaneco.github.io/mochidan/Assets/og.jpg?v=4">
     <meta property="og:image:type" content="image/jpeg">
     <meta property="og:image:width" content="1024">
     <meta property="og:image:height" content="1024">
@@ -27,10 +27,24 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="もちにゃふぇの不思議なダンジョン">
     <meta name="twitter:description" content="ふとした拍子に謎のダンジョンへ迷い込んだもちにゃふぇを操作する、ターン制ローグライクRPG。">
-    <meta name="twitter:image" content="https://lunaneco.github.io/mochidan/Assets/og.jpg?v=6">
+    <meta name="twitter:image" content="https://lunaneco.github.io/mochidan/Assets/og.jpg?v=4">
     <!-- Tone.js -->
     <script src="Tone.js"></script>
-    <script src="hq-sprites.js?v=6"></script>
+    <script>
+        (function () {
+            try {
+                var q = new URLSearchParams(location.search);
+                if (!q.has('v')) return;
+                q.delete('v');
+                var next = q.toString();
+                var url = location.pathname + (next ? '?' + next : '') + location.hash;
+                if (url !== location.pathname + location.search + location.hash) {
+                    location.replace(url);
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <script src="hq-sprites.js?v=4"></script>
     <style>
         :root {
             --bg-color: #111;
@@ -381,7 +395,7 @@
             width: 100%;
             height: 100%;
             background-color: #000;
-            background-image: url('Assets/title.jpg?v=6');
+            background-image: url('Assets/title.jpg?v=4');
             background-size: cover;
             background-position: center;
             z-index: 200;
@@ -3124,7 +3138,7 @@
                         this.mochinyafeImg = new Image();
                         this.mochinyafeImg.onload = () => resolve();
                         this.mochinyafeImg.onerror = () => resolve();
-                        this.mochinyafeImg.src = 'motimoti.png?v=6';
+                        this.mochinyafeImg.src = 'motimoti.png?v=4';
                     }),
                     new Promise((resolve) => {
                         this.omusubiImg = new Image();

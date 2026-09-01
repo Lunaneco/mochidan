@@ -6,7 +6,7 @@ const CHAR_SCALE = 1.22;
 const MOVE_ANIM_MS = 115;
 const ENEMY_MOVE_ANIM_MS = 140;
 const ATTACK_ANIM_MS = 220;
-const ASSET_V = '6';
+const ASSET_V = '4';
 const av = (p) => p + '?v=' + ASSET_V;
 
 const HQ_SPRITE_MANIFEST = {
