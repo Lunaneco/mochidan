@@ -6,36 +6,38 @@ const CHAR_SCALE = 1.22;
 const MOVE_ANIM_MS = 115;
 const ENEMY_MOVE_ANIM_MS = 140;
 const ATTACK_ANIM_MS = 220;
+const ASSET_V = '6';
+const av = (p) => p + '?v=' + ASSET_V;
 
 const HQ_SPRITE_MANIFEST = {
     player: {
-        idle: 'Assets/sprites/player.png?v=3',
+        idle: av('Assets/sprites/player.png'),
         views: {
-            down: 'Assets/sprites/player.png?v=3',
-            up: 'Assets/sprites/player_back.png?v=3',
-            right: 'Assets/sprites/player_right.png?v=3',
-            left: 'Assets/sprites/player_right.png?v=3'
+            down: av('Assets/sprites/player.png'),
+            up: av('Assets/sprites/player_back.png'),
+            right: av('Assets/sprites/player_right.png'),
+            left: av('Assets/sprites/player_right.png')
         }
     },
-    enemy_slime: { idle: 'Assets/sprites/enemy_slime.png', sheet: 'Assets/sprites/enemy_slime_sheet.png' },
-    enemy_hagure_slime: { idle: 'Assets/sprites/enemy_hagure_slime.png', sheet: 'Assets/sprites/enemy_hagure_slime_sheet.png' },
-    enemy_goblin: { idle: 'Assets/sprites/enemy_goblin.png', sheet: 'Assets/sprites/enemy_goblin_sheet.png' },
-    enemy_skeleton: { idle: 'Assets/sprites/enemy_skeleton.png', sheet: 'Assets/sprites/enemy_skeleton_sheet.png' },
-    enemy_orc: { idle: 'Assets/sprites/enemy_orc.png', sheet: 'Assets/sprites/enemy_orc_sheet.png' },
-    enemy_werewolf: { idle: 'Assets/sprites/enemy_werewolf.png', sheet: 'Assets/sprites/enemy_werewolf_sheet.png' },
-    enemy_golem: { idle: 'Assets/sprites/enemy_golem.png', sheet: 'Assets/sprites/enemy_golem_sheet.png' },
-    enemy_dragon: { idle: 'Assets/sprites/enemy_dragon.png', sheet: 'Assets/sprites/enemy_dragon_sheet.png' },
-    enemy_boss_hedgehog: { idle: 'Assets/sprites/enemy_boss_hedgehog.png', sheet: 'Assets/sprites/enemy_boss_hedgehog_sheet.png' },
-    enemy_boss_adamantite: { idle: 'Assets/sprites/enemy_boss_adamantite.png', sheet: 'Assets/sprites/enemy_boss_adamantite_sheet.png' },
-    enemy_dark_moti: { idle: 'Assets/sprites/enemy_dark_moti.png' },
-    enemy_creator: { idle: 'Assets/sprites/enemy_creator.png' },
+    enemy_slime: { idle: av('Assets/sprites/enemy_slime.png'), sheet: av('Assets/sprites/enemy_slime_sheet.png') },
+    enemy_hagure_slime: { idle: av('Assets/sprites/enemy_hagure_slime.png'), sheet: av('Assets/sprites/enemy_hagure_slime_sheet.png') },
+    enemy_goblin: { idle: av('Assets/sprites/enemy_goblin.png'), sheet: av('Assets/sprites/enemy_goblin_sheet.png') },
+    enemy_skeleton: { idle: av('Assets/sprites/enemy_skeleton.png'), sheet: av('Assets/sprites/enemy_skeleton_sheet.png') },
+    enemy_orc: { idle: av('Assets/sprites/enemy_orc.png'), sheet: av('Assets/sprites/enemy_orc_sheet.png') },
+    enemy_werewolf: { idle: av('Assets/sprites/enemy_werewolf.png'), sheet: av('Assets/sprites/enemy_werewolf_sheet.png') },
+    enemy_golem: { idle: av('Assets/sprites/enemy_golem.png'), sheet: av('Assets/sprites/enemy_golem_sheet.png') },
+    enemy_dragon: { idle: av('Assets/sprites/enemy_dragon.png'), sheet: av('Assets/sprites/enemy_dragon_sheet.png') },
+    enemy_boss_hedgehog: { idle: av('Assets/sprites/enemy_boss_hedgehog.png'), sheet: av('Assets/sprites/enemy_boss_hedgehog_sheet.png') },
+    enemy_boss_adamantite: { idle: av('Assets/sprites/enemy_boss_adamantite.png'), sheet: av('Assets/sprites/enemy_boss_adamantite_sheet.png') },
+    enemy_dark_moti: { idle: av('Assets/sprites/enemy_dark_moti.png') },
+    enemy_creator: { idle: av('Assets/sprites/enemy_creator.png') },
     companion_omusubi: {
-        idle: 'Assets/sprites/companion_omusubi.png?v=1',
-        sheet: 'Assets/sprites/companion_omusubi_sheet.png?v=1'
+        idle: av('Assets/sprites/companion_omusubi.png'),
+        sheet: av('Assets/sprites/companion_omusubi_sheet.png')
     },
     companion_patti: {
-        idle: 'Assets/sprites/companion_patti.png?v=1',
-        sheet: 'Assets/sprites/companion_patti_sheet.png?v=1'
+        idle: av('Assets/sprites/companion_patti.png'),
+        sheet: av('Assets/sprites/companion_patti_sheet.png')
     }
 };
 

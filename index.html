@@ -19,7 +19,7 @@
     <meta property="og:title" content="もちにゃふぇの不思議なダンジョン">
     <meta property="og:description" content="ふとした拍子に謎のダンジョンへ迷い込んだもちにゃふぇを操作する、ターン制ローグライクRPG。">
     <meta property="og:url" content="https://lunaneco.github.io/mochidan/">
-    <meta property="og:image" content="https://lunaneco.github.io/mochidan/Assets/og.jpg?v=4">
+    <meta property="og:image" content="https://lunaneco.github.io/mochidan/Assets/og.jpg?v=6">
     <meta property="og:image:type" content="image/jpeg">
     <meta property="og:image:width" content="1024">
     <meta property="og:image:height" content="1024">
@@ -27,10 +27,10 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="もちにゃふぇの不思議なダンジョン">
     <meta name="twitter:description" content="ふとした拍子に謎のダンジョンへ迷い込んだもちにゃふぇを操作する、ターン制ローグライクRPG。">
-    <meta name="twitter:image" content="https://lunaneco.github.io/mochidan/Assets/og.jpg?v=4">
+    <meta name="twitter:image" content="https://lunaneco.github.io/mochidan/Assets/og.jpg?v=6">
     <!-- Tone.js -->
     <script src="Tone.js"></script>
-    <script src="hq-sprites.js"></script>
+    <script src="hq-sprites.js?v=6"></script>
     <style>
         :root {
             --bg-color: #111;
@@ -381,7 +381,7 @@
             width: 100%;
             height: 100%;
             background-color: #000;
-            background-image: url('Assets/title.jpg');
+            background-image: url('Assets/title.jpg?v=6');
             background-size: cover;
             background-position: center;
             z-index: 200;
@@ -3124,7 +3124,7 @@
                         this.mochinyafeImg = new Image();
                         this.mochinyafeImg.onload = () => resolve();
                         this.mochinyafeImg.onerror = () => resolve();
-                        this.mochinyafeImg.src = 'motimoti.png';
+                        this.mochinyafeImg.src = 'motimoti.png?v=6';
                     }),
                     new Promise((resolve) => {
                         this.omusubiImg = new Image();
