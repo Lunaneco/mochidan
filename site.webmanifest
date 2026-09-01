@@ -1,0 +1,27 @@
+{
+  "name": "もちにゃふぇの不思議なダンジョン",
+  "short_name": "もちにゃふぇ",
+  "description": "ふとした拍子に謎のダンジョンへ迷い込んだもちにゃふぇを操作する、ターン制ローグライクRPG。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#111111",
+  "icons": [
+    {
+      "src": "apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "Assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "Assets/og.jpg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg"
+    }
+  ]
+}
