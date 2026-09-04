@@ -872,6 +872,7 @@
             uiSynth: null,
             actionSynth: null,
             noiseSynth: null,
+            hitSynth: null,
             lowHpSynth: null,
             _lowHpOn: false,
             _lowHpTimer: null,
@@ -905,11 +906,17 @@
                     this.noiseSynth.volume.value = -10;
 
                     // HP危険（赤）用：低い心拍。他SEよりかなり小さく
+                    this.hitSynth = new Tone.Synth({
+                        oscillator: { type: 'triangle' },
+                        envelope: { attack: 0.005, decay: 0.18, sustain: 0, release: 0.08 }
+                    }).toDestination();
+                    this.hitSynth.volume.value = -8;
+
                     this.lowHpSynth = new Tone.Synth({
                         oscillator: { type: 'sine' },
-                        envelope: { attack: 0.01, decay: 0.16, sustain: 0, release: 0.1 }
+                        envelope: { attack: 0.01, decay: 0.22, sustain: 0, release: 0.12 }
                     }).toDestination();
-                    this.lowHpSynth.volume.value = -30;
+                    this.lowHpSynth.volume.value = -18;
 
                     this.initialized = true;
                     /* 起動ログ省略 */
@@ -959,11 +966,21 @@
             },
 
             playDamage() {
+                this.playPlayerHit();
+            },
+
+            playPlayerHit() {
                 if (!this.initialized) return;
-                // 低いノイズ
-                this.noiseSynth.noise.type = "pink";
-                this.noiseSynth.triggerAttackRelease("8n");
-                setTimeout(() => { this.noiseSynth.noise.type = "brown"; }, 200);
+                try {
+                    const now = Tone.now();
+                    if (this.noiseSynth) this.noiseSynth.triggerAttackRelease('16n', now);
+                    if (this.hitSynth) {
+                        this.hitSynth.triggerAttackRelease('A2', '16n', now);
+                        this.hitSynth.triggerAttackRelease('E2', '8n', now + 0.07);
+                    } else if (this.actionSynth) {
+                        this.actionSynth.triggerAttackRelease('A2', '16n', now);
+                    }
+                } catch (e) {}
             },
 
             playItemGet() {
@@ -995,8 +1012,8 @@
                 if (!this.initialized || !this.lowHpSynth) return;
                 try {
                     const now = Tone.now();
-                    this.lowHpSynth.triggerAttackRelease('A2', '16n', now);
-                    this.lowHpSynth.triggerAttackRelease('E2', '16n', now + 0.18);
+                    this.lowHpSynth.triggerAttackRelease('G3', '16n', now);
+                    this.lowHpSynth.triggerAttackRelease('D3', '16n', now + 0.2);
                 } catch (e) {}
             },
 
@@ -1005,7 +1022,7 @@
                     if (this._lowHpOn) return;
                     this._lowHpOn = true;
                     this.playLowHpPulse();
-                    this._lowHpTimer = setInterval(() => this.playLowHpPulse(), 1700);
+                    this._lowHpTimer = setInterval(() => this.playLowHpPulse(), 1600);
                 } else {
                     this._lowHpOn = false;
                     if (this._lowHpTimer) {
@@ -1049,12 +1066,6 @@
                 if (window.SoundManager) SoundManager.setLowHpAlarm(danger);
             },
             log(msg) {
-                if (window.SoundManager && SoundManager.initialized) {
-                    // ダメージを受けた時の音（敵味方問わずヒット音として機能）
-                    if (msg.includes('のダメージ！') || msg.includes('ダメージ！')) {
-                        SoundManager.playDamage();
-                    }
-                }
                 this.logMessages.push(msg);
                 if (this.logMessages.length > 8) this.logMessages.shift();
                 const logDiv = document.getElementById('log-window');
@@ -1588,6 +1599,7 @@
                                     let pDef = player.getTotalDef();
                                     let dmg = Math.max(50, 200 - Math.floor(pDef / 2));
                                     player.hp -= dmg;
+                                    if (window.SoundManager) SoundManager.playPlayerHit();
                                     UI.log(`闇の炎が身体を焼く！ ${dmg} のダメージ！`);
                                 }
                             }
@@ -1609,6 +1621,7 @@
                         if (isHit) {
                             let dmg = Math.max(100, 500 - Math.floor(player.getTotalDef() / 2));
                             player.hp -= dmg;
+                            if (window.SoundManager) SoundManager.playPlayerHit();
                             UI.log(`終焉の光に呑み込まれた！ ${dmg} のダメージ！`);
                         }
                         return;
@@ -1623,6 +1636,7 @@
                             setTimeout(() => { if (this.activeEffect === 'genesis') this.activeEffect = null; }, 500);
                             let dmg = Math.max(80, 300 - Math.floor(player.getTotalDef() / 2));
                             player.hp -= dmg;
+                            if (window.SoundManager) SoundManager.playPlayerHit();
                             UI.log(`光の奔流が身体を貫く！ ${dmg} のダメージ！`);
                             return;
                         }
@@ -1636,6 +1650,7 @@
                             this.effectY = player.y;
                             let dmg = Math.max(150, 400 - Math.floor(player.getTotalDef() / 2));
                             player.hp -= dmg;
+                            if (window.SoundManager) SoundManager.playPlayerHit();
                             UI.log(`天からの裁きが下る！ ${dmg} のダメージ！`);
                             setTimeout(() => { if (this.activeEffect === 'holy_pulse') this.activeEffect = null; }, 600);
                             return;
@@ -1682,6 +1697,7 @@
                             } else {
                                 const fireDmg = 20;
                                 player.hp -= fireDmg;
+                                if (window.SoundManager) SoundManager.playPlayerHit();
                                 UI.log(`もちにゃふぇに ${fireDmg} のダメージ！`);
                             }
                             return;
@@ -1771,6 +1787,7 @@
                                         let pDef = player.getTotalDef();
                                         let tremorDmg = Math.max(5, 40 - Math.floor(pDef / 2));
                                         player.hp -= tremorDmg;
+                                        if (window.SoundManager) SoundManager.playPlayerHit();
                                         UI.log(`もちにゃふぇに ${tremorDmg} のダメージ！`);
 
                                         // ノックバック (ボスから離れる方向)
@@ -3384,7 +3401,8 @@
             // プレイヤーへのダメージ処理（致死回避アイテムの判定を含む）
             applyDamageToPlayer(damage, reason = "") {
                 if (damage <= 0) return;
-                
+                if (window.SoundManager) SoundManager.playPlayerHit();
+
                 let actualDamage = damage;
                 const willDie = (this.player.hp - actualDamage <= 0);
 
@@ -3407,6 +3425,7 @@
                 if (this.player.hp <= 0) {
                     UI.log("もちにゃふぇは力尽きた……");
                 }
+                UI.updateStatus(this.player, this.floor);
             }
 
             // 背景画像の更新（信頼性向上のため独立化）
