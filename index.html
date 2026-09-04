@@ -872,6 +872,9 @@
             uiSynth: null,
             actionSynth: null,
             noiseSynth: null,
+            lowHpSynth: null,
+            _lowHpOn: false,
+            _lowHpTimer: null,
             bgm: new Audio(),
             intendedBgmPath: '',
 
@@ -900,6 +903,13 @@
                         envelope: { attack: 0.01, decay: 0.2, sustain: 0 }
                     }).toDestination();
                     this.noiseSynth.volume.value = -10;
+
+                    // HP危険（赤）用：低い心拍。他SEよりかなり小さく
+                    this.lowHpSynth = new Tone.Synth({
+                        oscillator: { type: 'sine' },
+                        envelope: { attack: 0.01, decay: 0.16, sustain: 0, release: 0.1 }
+                    }).toDestination();
+                    this.lowHpSynth.volume.value = -30;
 
                     this.initialized = true;
                     /* 起動ログ省略 */
@@ -979,6 +989,30 @@
                 this.actionSynth.triggerAttackRelease(["F4", "A4", "C5"], "8n", now + 0.2);
                 this.actionSynth.triggerAttackRelease(["G4", "B4", "D5"], "8n", now + 0.4);
                 this.actionSynth.triggerAttackRelease(["C5", "E5", "G5"], "2n", now + 0.6);
+            },
+
+            playLowHpPulse() {
+                if (!this.initialized || !this.lowHpSynth) return;
+                try {
+                    const now = Tone.now();
+                    this.lowHpSynth.triggerAttackRelease('A2', '16n', now);
+                    this.lowHpSynth.triggerAttackRelease('E2', '16n', now + 0.18);
+                } catch (e) {}
+            },
+
+            setLowHpAlarm(on) {
+                if (on) {
+                    if (this._lowHpOn) return;
+                    this._lowHpOn = true;
+                    this.playLowHpPulse();
+                    this._lowHpTimer = setInterval(() => this.playLowHpPulse(), 1700);
+                } else {
+                    this._lowHpOn = false;
+                    if (this._lowHpTimer) {
+                        clearInterval(this._lowHpTimer);
+                        this._lowHpTimer = null;
+                    }
+                }
             }
         };
 
@@ -1008,6 +1042,11 @@
                 document.getElementById('val-maxhp').innerText = player.maxHp;
                 // 満腹度は内部数値をそのまま % 表示にする（101% 等）
                 document.getElementById('val-food').innerText = Math.floor(player.food);
+
+                const title = document.getElementById('title-screen');
+                const inGame = title && title.classList.contains('hidden');
+                const danger = inGame && player.hp > 0 && hpRatio <= 0.2;
+                if (window.SoundManager) SoundManager.setLowHpAlarm(danger);
             },
             log(msg) {
                 if (window.SoundManager && SoundManager.initialized) {
@@ -5887,6 +5926,7 @@
                 const ts = document.getElementById('title-screen');
                 ts.style.display = 'flex';
                 ts.classList.remove('hidden');
+                if (window.SoundManager) SoundManager.setLowHpAlarm(false);
 
                 // BGM をタイトル用に強制的に更新
                 this.playBgm('Assets/titlebgm.mp3');
