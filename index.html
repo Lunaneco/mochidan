@@ -910,13 +910,13 @@
                         oscillator: { type: 'triangle' },
                         envelope: { attack: 0.005, decay: 0.18, sustain: 0, release: 0.08 }
                     }).toDestination();
-                    this.hitSynth.volume.value = -8;
+                    this.hitSynth.volume.value = -4;
 
                     this.lowHpSynth = new Tone.Synth({
                         oscillator: { type: 'sine' },
                         envelope: { attack: 0.01, decay: 0.22, sustain: 0, release: 0.12 }
                     }).toDestination();
-                    this.lowHpSynth.volume.value = -18;
+                    this.lowHpSynth.volume.value = -10;
 
                     this.initialized = true;
                     /* 起動ログ省略 */
@@ -972,15 +972,15 @@
             playPlayerHit() {
                 if (!this.initialized) return;
                 try {
-                    const now = Tone.now();
-                    if (this.noiseSynth) this.noiseSynth.triggerAttackRelease('16n', now);
+                    if (this.noiseSynth) this.noiseSynth.triggerAttackRelease('8n');
                     if (this.hitSynth) {
-                        this.hitSynth.triggerAttackRelease('A2', '16n', now);
-                        this.hitSynth.triggerAttackRelease('E2', '8n', now + 0.07);
+                        this.hitSynth.triggerAttackRelease('A2', '8n');
                     } else if (this.actionSynth) {
-                        this.actionSynth.triggerAttackRelease('A2', '16n', now);
+                        this.actionSynth.triggerAttackRelease('A2', '8n');
                     }
-                } catch (e) {}
+                } catch (e) {
+                    console.warn('playPlayerHit', e);
+                }
             },
 
             playItemGet() {
@@ -1011,10 +1011,10 @@
             playLowHpPulse() {
                 if (!this.initialized || !this.lowHpSynth) return;
                 try {
-                    const now = Tone.now();
-                    this.lowHpSynth.triggerAttackRelease('G3', '16n', now);
-                    this.lowHpSynth.triggerAttackRelease('D3', '16n', now + 0.2);
-                } catch (e) {}
+                    this.lowHpSynth.triggerAttackRelease('G3', '8n');
+                } catch (e) {
+                    console.warn('playLowHpPulse', e);
+                }
             },
 
             setLowHpAlarm(on) {
@@ -1032,6 +1032,7 @@
                 }
             }
         };
+        window.SoundManager = SoundManager;
 
         // UI管理
         const UI = {
@@ -1063,7 +1064,7 @@
                 const title = document.getElementById('title-screen');
                 const inGame = title && title.classList.contains('hidden');
                 const danger = inGame && player.hp > 0 && hpRatio <= 0.2;
-                if (window.SoundManager) SoundManager.setLowHpAlarm(danger);
+                SoundManager.setLowHpAlarm(danger);
             },
             log(msg) {
                 this.logMessages.push(msg);
@@ -1599,7 +1600,7 @@
                                     let pDef = player.getTotalDef();
                                     let dmg = Math.max(50, 200 - Math.floor(pDef / 2));
                                     player.hp -= dmg;
-                                    if (window.SoundManager) SoundManager.playPlayerHit();
+                                    SoundManager.playPlayerHit();
                                     UI.log(`闇の炎が身体を焼く！ ${dmg} のダメージ！`);
                                 }
                             }
@@ -1621,7 +1622,7 @@
                         if (isHit) {
                             let dmg = Math.max(100, 500 - Math.floor(player.getTotalDef() / 2));
                             player.hp -= dmg;
-                            if (window.SoundManager) SoundManager.playPlayerHit();
+                            SoundManager.playPlayerHit();
                             UI.log(`終焉の光に呑み込まれた！ ${dmg} のダメージ！`);
                         }
                         return;
@@ -1636,7 +1637,7 @@
                             setTimeout(() => { if (this.activeEffect === 'genesis') this.activeEffect = null; }, 500);
                             let dmg = Math.max(80, 300 - Math.floor(player.getTotalDef() / 2));
                             player.hp -= dmg;
-                            if (window.SoundManager) SoundManager.playPlayerHit();
+                            SoundManager.playPlayerHit();
                             UI.log(`光の奔流が身体を貫く！ ${dmg} のダメージ！`);
                             return;
                         }
@@ -1650,7 +1651,7 @@
                             this.effectY = player.y;
                             let dmg = Math.max(150, 400 - Math.floor(player.getTotalDef() / 2));
                             player.hp -= dmg;
-                            if (window.SoundManager) SoundManager.playPlayerHit();
+                            SoundManager.playPlayerHit();
                             UI.log(`天からの裁きが下る！ ${dmg} のダメージ！`);
                             setTimeout(() => { if (this.activeEffect === 'holy_pulse') this.activeEffect = null; }, 600);
                             return;
@@ -1697,7 +1698,7 @@
                             } else {
                                 const fireDmg = 20;
                                 player.hp -= fireDmg;
-                                if (window.SoundManager) SoundManager.playPlayerHit();
+                                SoundManager.playPlayerHit();
                                 UI.log(`もちにゃふぇに ${fireDmg} のダメージ！`);
                             }
                             return;
@@ -1787,7 +1788,7 @@
                                         let pDef = player.getTotalDef();
                                         let tremorDmg = Math.max(5, 40 - Math.floor(pDef / 2));
                                         player.hp -= tremorDmg;
-                                        if (window.SoundManager) SoundManager.playPlayerHit();
+                                        SoundManager.playPlayerHit();
                                         UI.log(`もちにゃふぇに ${tremorDmg} のダメージ！`);
 
                                         // ノックバック (ボスから離れる方向)
@@ -3401,7 +3402,7 @@
             // プレイヤーへのダメージ処理（致死回避アイテムの判定を含む）
             applyDamageToPlayer(damage, reason = "") {
                 if (damage <= 0) return;
-                if (window.SoundManager) SoundManager.playPlayerHit();
+                SoundManager.playPlayerHit();
 
                 let actualDamage = damage;
                 const willDie = (this.player.hp - actualDamage <= 0);
@@ -5945,7 +5946,7 @@
                 const ts = document.getElementById('title-screen');
                 ts.style.display = 'flex';
                 ts.classList.remove('hidden');
-                if (window.SoundManager) SoundManager.setLowHpAlarm(false);
+                SoundManager.setLowHpAlarm(false);
 
                 // BGM をタイトル用に強制的に更新
                 this.playBgm('Assets/titlebgm.mp3');
